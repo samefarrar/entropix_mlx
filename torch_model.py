@@ -5,9 +5,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from entropix.config import ModelParams
-from entropix.torch_kvcache import KVCache
-from entropix.torch_weights import XfmrWeights, LayerWeights
+from config import ModelParams
+from torch_kvcache import KVCache
+from torch_weights import XfmrWeights, LayerWeights
 
 DEFAULT_MASK_VALUE = -0.7 * float(torch.finfo(torch.float32).max)
 
@@ -65,4 +65,3 @@ def xfmr(xfmr_weights: XfmrWeights, model_params: ModelParams, tokens: torch.Ten
     h = h + feed_forward(rms_norm(h, xfmr_weights.layer_weights[i].ffn_norm), xfmr_weights.layer_weights[i])
   logits = F.linear(rms_norm(h, xfmr_weights.norm), xfmr_weights.output)
   return logits, kvcache
-

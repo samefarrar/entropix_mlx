@@ -10,11 +10,11 @@ import tyro
 from pathlib import Path
 from functools import partial
 
-from entropix.config import LLAMA_1B_PARAMS
-from entropix.kvcache import KVCache
-from entropix.model import xfmr
-from entropix.tokenizer import Tokenizer
-from entropix.weights import load_weights
+from config import LLAMA_1B_PARAMS
+from kvcache import KVCache
+from model import xfmr
+from tokenizer import Tokenizer
+from weights import load_weights
 
 
 prompt = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
@@ -289,5 +289,3 @@ def main():
 
 if __name__ == '__main__':
   tyro.cli(main)
-
-
