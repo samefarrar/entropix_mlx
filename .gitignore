@@ -2,7 +2,8 @@ git-describe.txt
 .vscode/
 attic/
 weights/
-
+tokenizer.model
+uv.lock
 
 # boilerplate from here on down
 
