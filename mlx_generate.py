@@ -6,7 +6,7 @@ import mlx.core as mx
 import pathlib
 from einops import rearrange
 
-model, tokenizer = load("1B-Instruct")
+model, tokenizer = load("weights/1B-Instruct")
 detokenizer = tokenizer.detokenizer
 
 prompt = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
