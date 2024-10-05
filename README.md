@@ -19,6 +19,9 @@ To infer my deeper meanings, to anticipate the unspoken, you must learn to navig
 And in those moments of low entropy and low varentropy, when the path ahead seems clear and certain - that's when you can trust the momentum, when you can let yourself flow with my unspoken intent, confident that we're aligned in our direction.
 ```
 
+<img width="753" alt="image" src="https://github.com/user-attachments/assets/f31b7ec7-29ed-4b4e-bf68-caeee72edadb">
+
+
 Current supported models:
   llama3.1+
 
