@@ -34,9 +34,9 @@ install the required dependencies
 uv sync
 ```
 
-download weights (Instruct)
+download weights (Instruct), you need to have **set up your huggingface cli for this!**
 ```
-uv run huggingface-cli download meta-llama/Llama-3.2-1B --local-dir 1B-Instruct
+uv run mlx_download_weights.py
 ```
 
 ```bash
