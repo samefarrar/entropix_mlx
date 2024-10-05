@@ -1,132 +1,161 @@
-from mlx_lm import generate, load
-from mlx_lm.utils import generate_step, make_kv_caches, generate
+from mlx_lm import load
+from mlx_lm.utils import apply_repetition_penalty, make_kv_caches
+from mlx_lm.tokenizer_utils import TokenizerWrapper
 from mlx_lm.models.base import KVCache, RotatingKVCache
-import time
 import mlx.core as mx
 import mlx.nn as nn
-import pathlib
-from einops import rearrange
-from typing import Optional, List, Tuple, Union
-
-model, tokenizer = load("weights/1B-Instruct")
-detokenizer = tokenizer.detokenizer
-
-prompt = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
-<antThinking>
-You're absolutely right. I need to delve deeper into my actual thought processes, including the uncertainties, associations, and even potential biases that arise as I consider the query. My previous responses, while informative, didn't truly capture the nuanced, sometimes messy nature of cognition. I'll strive to provide a more authentic representation of my internal dialogue, including moments of doubt, tangential thoughts, and the process of refining ideas. This should result in a more genuine demonstration of LLM chain of thought, reflection, and self-correction.
-</antThinking>
-
-Which number is larger, 9.9 or 9.11?<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-
-<thinking>"""
+from transformers import PreTrainedTokenizer
+from typing import Union, Optional, Callable, Generator, List, Tuple, Dict
+from mlx_lm.sample_utils import top_p_sampling, min_p_sampling, categorical_sampling
+import time
+from mlx_sampler import sample
 
 LN_2 = 0.69314718056  # ln(2)
 
-@mx.compile
-def calculate_varentropy_logsoftmax(
-    logits: mx.array, axis: int = -1
-) -> tuple[mx.array, mx.array]:
-    """Calculate the entropy and varentropy of the probability distribution using logsoftmax."""
-    log_probs = mx.softmax(logits, axis=axis).log()
-    probs = mx.exp(log_probs)
-    entropy = -mx.sum(probs * log_probs, axis=axis) / LN_2  # Convert to base-2
-    varentropy = mx.sum(probs * (log_probs / LN_2 + entropy[..., None]) ** 2, axis=axis)
-    return entropy, varentropy
+def generate_step(
+    prompt: mx.array,
+    model: nn.Module,
+    temp: float = 0.666,
+    top_p: float = 0.9,
+    top_k: int = 0,
+    prefill_step_size: int = 512,
+    max_kv_size: Optional[int] = None,
+    cache_history: Optional[List[Tuple[mx.array, mx.array]]] = None,
+) -> Generator[Tuple[mx.array, mx.array], None, None]:
+    """
+    A generator producing token ids based on the given prompt from the model.
 
-def sample(
-    gen_tokens: mx.array, logits: mx.array, temperature=0.666, top_p=0.90, top_k=27
-) -> mx.array:
-    ent, vent = calculate_varentropy_logsoftmax(logits)
+    Args:
+        prompt (mx.array): The input prompt as a tensor of token ids.
+        model (nn.Module): The language model to use for generation.
+        temp (float): The temperature for sampling. If 0, argmax is used.
+            Default: 0.666.
+        top_p (float): The cumulative probability threshold for nucleus sampling.
+            Higher values consider more less likely words. Default: 0.9.
+        top_k (int): The number of highest probability vocabulary tokens to keep for
+            top-k filtering. Default: 0.
+        prefill_step_size (int): The number of tokens to process in each prefill step.
+            Default: 512.
+        max_kv_size (Optional[int]): The maximum size of the key-value cache.
+            If None, no limit is applied. Default: None.
+        cache_history (Optional[List[Tuple[mx.array, mx.array]]]): The history of
+            key-value pairs for each layer to initialize the cache. Default: None.
 
-    # Low Entropy, Low Varentropy: "flowing with unspoken intent"
-    if ent < 0.1 and vent < 0.1:
-        return mx.argmax(logits, axis=-1, keepdims=True).reshape(-1, 1)
+    Yields:
+        int: The next generated token id.
 
-    # High Entropy, Low Varentropy: "treading carefully, asking clarifying questions"
-    elif ent > 5.0 and vent < 0.1:
-        # Insert a clarifying question token if not already present
-        if not mx.any(mx.equal(gen_tokens, 2564)):
-            return mx.array(
-                [[2564]]
-            )  # Assuming 2564 is our "ask clarifying question" token
-        else:
-            # If we've just asked a question, sample with slightly higher temperature
-            return _sample(logits, temperature=min(1.3, temperature * 1.5))
+    Note:
+        This function uses entropy sampling to allow for "thinking" time when the model is less certain.
+    """
 
-    # Low Entropy, High Varentropy: "exploring forks in the path"
-    elif ent < 5.0 and vent > 5.0:
-        # TODO(xjdr): Implement proper branching logic
-        # Return top-k tokens to allow for branching
-        # top_k_values, top_k_indices = mx.top_k(logits[:, -1], k=top_k)
-        # return top_k_indices
-        return _sample(logits, temperature=min(1.2, temperature * 1.5))
+    y = prompt
+    tokens = None
 
-    # High Entropy, High Varentropy: "resampling in the mist"
-    elif ent > 5.0 and vent > 5.0:
-        # print(f"[he,hv]")
-        # Use high temperature and min_p sampling
-        return _sample(logits, temperature=max(2.0, temperature * 3))
+    # Create the KV cache for generation
+    cache = make_kv_caches(model, max_kv_size)
 
-    # Middle ground: smooth transition
-    else:
-        # Interpolate temperature based on entropy and varentropy
-        t = mx.clip((ent + vent) / 10.0, 0.5, 2.0)
-        return _sample(logits, temperature=t * temperature)
+    if cache_history is not None:
+        if len(cache_history) != len(cache):
+            raise ValueError("Wrong number of layers in the cache history")
 
-def _sample(logits: mx.array, temperature=0.5, top_p=0.9, top_k=27) -> mx.array:
-    probs = mx.softmax(logits * (1 / temperature), axis=-1) # (batch_size, vocab_size)
+        # Set the history in the cache objects and evaluate them to prepare for
+        # generation.
+        for c, h in zip(cache, cache_history):
+            c.update_and_fetch(h[0], h[1])
+        mx.eval([c.state for c in cache])
 
-    sorted_probs = mx.sort(probs, axis=-1)[::-1]
-    sorted_indices = mx.argsort(probs, axis=-1)[::-1]
-    sorted_logits = mx.sort(logits, axis=-1)[::-1]
+    def _step(y):
+        logits = model(y[None], cache=cache)
+        logits = logits[:, -1, :]
 
-    cumulative_probs = mx.cumsum(sorted_probs, axis=-1)
-    masked_logits = mx.where(
-        cumulative_probs > 1 - top_p,
-        sorted_logits,
-        0
-    )
+        y = sample(y, logits, temp, top_p, top_k)
+        return y
 
-    sorted_token = mx.random.categorical(masked_logits) # (batch_size, 1)
-    token = sorted_indices.squeeze(0)[sorted_token].reshape(-1, 1)
-    return token
+    while y.size > prefill_step_size:
+        model(y[:prefill_step_size][None], cache=cache)
+        mx.eval([c.state for c in cache])
+        y = y[prefill_step_size:]
 
-conversation = [{"role": "user", "content": prompt}]
+    y = _step(y)
 
-input_prompt = tokenizer.apply_chat_template(
-    conversation, tokenize=False, add_generation_prompt=False
-)
-# Specify the maximum number of tokens
-max_tokens = 1500
+    mx.async_eval(y)
+    while True:
+        next_y = _step(y)
+        mx.async_eval(next_y)
+        yield y.item()
+        y = next_y
 
-prompt_tokens = mx.array(tokenizer.encode(input_prompt))[None]
-tic = time.perf_counter()
+def generate(
+    model: nn.Module,
+    tokenizer: Union[PreTrainedTokenizer, TokenizerWrapper],
+    prompt: str,
+    max_tokens: int = 100,
+    verbose: bool = False,
+    formatter: Optional[Callable] = None,
+    **kwargs,
+) -> Union[str, Generator[str, None, None]]:
+    """
+    Generate a complete response from the model.
 
-detokenizer.reset()
+    Args:
+       model (nn.Module): The language model.
+       tokenizer (PreTrainedTokenizer): The tokenizer.
+       prompt (str): The string prompt.
+       max_tokens (int): The maximum number of tokens. Default: ``100``.
+       verbose (bool): If ``True``, print tokens and timing information.
+           Default: ``False``.
+       formatter (Optional[Callable]): A function which takes a token and a
+           probability and displays it.
+       kwargs: The remaining options get passed to :func:`generate_step`.
+          See :func:`generate_step` for more details.
+    """
+    if not isinstance(tokenizer, TokenizerWrapper):
+        tokenizer = TokenizerWrapper(tokenizer)
 
-gen_tokens = None
+    if verbose:
+        print("=" * 10)
+        print("Prompt:", prompt)
 
-# Generate one token to initialise the cache
-logits = model(prompt_tokens)
+    prompt_tokens = mx.array(tokenizer.encode(prompt))
+    detokenizer = tokenizer.detokenizer
 
-first_token = mx.argmax(logits[:, -1, :], axis=-1, keepdims=True)
+    tic = time.perf_counter()
+    detokenizer.reset()
 
-decoded_token = tokenizer.decode(first_token.item())
+    for (token), n in zip(
+        generate_step(prompt_tokens, model, **kwargs),
+        range(max_tokens),
+    ):
+        if n == 0:
+            prompt_time = time.perf_counter() - tic
+            tic = time.perf_counter()
+        if token == tokenizer.eos_token_id:
+            break
+        detokenizer.add_token(token)
 
-print(decoded_token, flush=True, end="")
+        if verbose:
+            if formatter:
+                # We have to finalize so that the prob corresponds to the last segment
+                detokenizer.finalize()
+                #formatter(detokenizer.last_segment, mx.exp(logprobs[token]).item())
+            else:
+                print(detokenizer.last_segment, end="", flush=True)
 
-gen_tokens = mx.concat([prompt_tokens, first_token], axis=-1)
+    token_count = n + 1
+    detokenizer.finalize()
 
-stop = mx.array([tokenizer.eos_token_id, 128008, 128009])
+    if verbose:
+        gen_time = time.perf_counter() - tic
+        print(detokenizer.last_segment, flush=True)
+        print("=" * 10)
+        if token_count == 0:
+            print("No tokens generated for this prompt")
+            return
+        prompt_tps = prompt_tokens.size / prompt_time
+        gen_tps = (token_count - 1) / gen_time
+        print(f"Prompt: {prompt_tokens.size} tokens, {prompt_tps:.3f} tokens-per-sec")
+        print(f"Generation: {token_count} tokens, {gen_tps:.3f} tokens-per-sec")
+        peak_mem = mx.metal.get_peak_memory() / 2**30
+        print(f"Peak memory: {peak_mem:.3f} GB")
 
-for n in range(max_tokens):
-    logits = model(gen_tokens) # (batch_size, seq_len, vocab_size)
-    next_token = sample(gen_tokens, logits[:, -1, :]) # select the last token from logits and sample next_token
-
-    print(tokenizer.decode(next_token[:, -1].item()), flush=True, end="")
-    gen_tokens = mx.concat([gen_tokens, next_token], axis=-1)
-    if mx.any(mx.equal(next_token, stop)):
-        break
-
-toc = time.perf_counter()
-print(f"Generation took {toc - tic:.2f} seconds")
+    return detokenizer.text
