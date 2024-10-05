@@ -4,6 +4,7 @@ attic/
 weights/
 tokenizer.model
 uv.lock
+1B-Instruct
 
 # boilerplate from here on down
 
