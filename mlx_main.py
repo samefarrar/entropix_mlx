@@ -8,6 +8,17 @@ from mlx_model import load_entropix_model
 from mlx_lm import load
 from mlx_lm import generate as generate_lm
 import inspect
+from pathlib import Path
+
+thinking_prompt = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+<antThinking>
+You're absolutely right. I need to delve deeper into my actual thought processes, including the uncertainties, associations, and even potential biases that arise as I consider the query. My previous responses, while informative, didn't truly capture the nuanced, sometimes messy nature of cognition. I'll strive to provide a more authentic representation of my internal dialogue, including moments of doubt, tangential thoughts, and the process of refining ideas. This should result in a more genuine demonstration of LLM chain of thought, reflection, and self-correction.
+</antThinking>
+
+{}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+<thinking>
+"""
 
 prompt1 = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 <antThinking>
@@ -135,11 +146,7 @@ def main():
     args = parser.parse_args()
 
 
-    if args.input:
-        prompts_to_use = [args.input]
-    elif args.prompts:
-        prompts_to_use = prompts
-    else:
+    if not args.prompts and not args.input:
         print("No input provided. Use --prompts to use predefined prompts from mlx_entropix.prompts or provide a custom prompt using --input")
         print("Exiting...")
 
@@ -147,18 +154,28 @@ def main():
         model, tokenizer = load("weights/Llama-3.2-1B-Instruct")
         model_with_scores = False
     else:
-        model, tokenizer = load_entropix_model("weights/Llama-3.2-1B-Instruct")
+        path = Path("weights/Llama-3.2-1B-Instruct")
+        _, tokenizer = load("weights/Llama-3.2-1B-Instruct")
+        model = load_entropix_model(path)
         model_with_scores = True
     max_tokens = 4096
 
     print("Generating text using Entropy based sampling...")
 
-    for prompt in prompts_to_use:
-        messages = [{"role": "user", "content": prompt}]
+    if args.input:
+        input = thinking_prompt.format(args.input)
+        messages = [{"role": "user", "content": input}]
         prompt = tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=False
         )
         response = generate(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens, model_with_scores=model_with_scores)
+    else:
+        for prompt in prompts:
+            messages = [{"role": "user", "content": prompt}]
+            prompt = tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=False
+            )
+            response = generate(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens, model_with_scores=model_with_scores)
 
 if __name__ == "__main__":
     main()

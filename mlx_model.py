@@ -14,13 +14,14 @@ import glob
 class EntropyAttention(Attention):
     def __init__(self, model_args: ModelArgs):
         super().__init__(model_args)
+        self.n_reps = self.n_heads // self.n_kv_heads
 
     def __call__(
         self,
         x: mx.array,
         mask: Optional[mx.array] = None,
         cache: Optional[KVCache] = None,
-    ) -> mx.array:
+    ) -> Tuple[mx.array, mx.array]:
         B, L, D = x.shape
 
         queries, keys, values = self.q_proj(x), self.k_proj(x), self.v_proj(x)
@@ -38,14 +39,14 @@ class EntropyAttention(Attention):
             queries = self.rope(queries)
             keys = self.rope(keys)
 
-        #shaped_keys = mx.repeat(keys, repeats=self.n_rep, axis = 1).transpose(0, 1, 3, 2) # (B, n_heads, L, head_dim)
-        #pre_scores = mx.matmul(queries, shaped_keys) / mx.sqrt(self.n_heads) # (B, n_heads, L, L)
+        shaped_keys = mx.repeat(keys, repeats=self.n_reps, axis = 1).transpose(0, 1, 3, 2) # (B, n_heads, L, head_dim)
+        pre_scores = mx.matmul(queries, shaped_keys) / mx.sqrt(self.n_heads) # (B, n_heads, L, L)
 
         output = mx.fast.scaled_dot_product_attention(
             queries, keys, values, scale=self.scale, mask=mask
         )
         output = output.transpose(0, 2, 1, 3).reshape(B, L, -1)
-        return self.o_proj(output)#, pre_scores
+        return self.o_proj(output), pre_scores
 
 class EntropyTransformerBlock(TransformerBlock):
     def __init__(self, model_args: ModelArgs):
@@ -58,11 +59,11 @@ class EntropyTransformerBlock(TransformerBlock):
         mask: Optional[mx.array] = None,
         cache: Optional[KVCache] = None,
     ) -> Tuple[mx.array, mx.array]:
-        r = self.self_attn(self.input_layernorm(x), mask, cache)
+        r, scores = self.self_attn(self.input_layernorm(x), mask, cache)
         h = x + r
         r = self.mlp(self.post_attention_layernorm(h))
         out = h + r
-        return out
+        return out, scores
 
 class EntropyLlamaModel(LlamaModel):
     def __init__(self, model_args: ModelArgs):
@@ -70,6 +71,7 @@ class EntropyLlamaModel(LlamaModel):
         self.layers = [
             EntropyTransformerBlock(model_args) for _ in range(model_args.num_hidden_layers)
         ]
+        self.n_heads = model_args.num_attention_heads
 
     def __call__(
         self,
@@ -79,16 +81,16 @@ class EntropyLlamaModel(LlamaModel):
         h = self.embed_tokens(inputs)
 
         mask = create_attention_mask(h, cache)
-        #attention_stats = AttnStats.new(h.shape[0], n_layers = len(self.layers), n_heads = self.n_heads)
+        attention_stats = AttnStats.new(h.shape[0], n_layers = len(self.layers), n_heads = self.n_heads)
 
         if cache is None:
             cache = [None] * len(self.layers)
 
-        for layer, c in zip(self.layers, cache):
-            h = layer(h, mask, cache=c)
-            #attention_stats = attention_stats.update(scores[:, :, -1, :], i)
+        for i, (layer, c) in enumerate(zip(self.layers, cache)):
+            h, scores = layer(h, mask, cache=c)
+            attention_stats = attention_stats.update(scores[:, :, -1, :], i)
 
-        return self.norm(h)
+        return self.norm(h), scores, attention_stats
 
 class EntropixModel(Model):
     def __init__(self, model_args: ModelArgs):
@@ -100,12 +102,12 @@ class EntropixModel(Model):
         inputs: mx.array,
         cache=None,
     ):
-        out = self.model(inputs, cache)
+        out, scores, attention_stats = self.model(inputs, cache)
         if self.args.tie_word_embeddings:
             out = self.model.embed_tokens.as_linear(out)
         else:
             out = self.lm_head(out)
-        return out#, scores, attention_stats
+        return out, scores, attention_stats
 
 def load_entropix_model(model_path: Path, lazy = False):
     config = load_config(model_path)
