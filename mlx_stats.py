@@ -30,9 +30,12 @@ class AttnStats(NamedTuple):
         new_entropy = -mx.sum(mx.where(probs > 0, probs * mx.log(probs), 0), axis=-1)
         new_varentropy = mx.sum(probs * (mx.log(probs) + new_entropy[..., None])**2, axis=-1)
 
-        updated_stats = self._replace(
-            entropy=self.entropy.at[:, layer_idx, :].set(new_entropy),
-            varentropy=self.varentropy.at[:, layer_idx, :].set(new_varentropy)
-        )
+        self.entropy[:, layer_idx, :] = new_entropy
+        self.varentropy[:, layer_idx, :] = new_varentropy
 
-        return updated_stats
+        return AttnStats(
+                    entropy=self.entropy,
+                    varentropy=self.varentropy,
+                    n_layers=self.n_layers,
+                    n_heads=self.n_heads
+                )
