@@ -4,11 +4,9 @@ attic/
 weights/
 tokenizer.model
 uv.lock
-1B-Instruct
+converted
 
 # boilerplate from here on down
-
-
 *__pycache__*
 
 # Byte-compiled / optimized / DLL files

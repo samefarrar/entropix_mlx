@@ -1,4 +1,3 @@
-from mlx_lm import load
 from mlx_lm.utils import apply_repetition_penalty, make_kv_caches
 from mlx_lm.tokenizer_utils import TokenizerWrapper
 from mlx_lm.models.base import KVCache, RotatingKVCache
@@ -21,6 +20,7 @@ def generate_step(
     prefill_step_size: int = 512,
     max_kv_size: Optional[int] = None,
     cache_history: Optional[List[Tuple[mx.array, mx.array]]] = None,
+    model_with_scores: bool = True,
 ) -> Generator[Tuple[mx.array, mx.array], None, None]:
     """
     A generator producing token ids based on the given prompt from the model.
@@ -40,6 +40,8 @@ def generate_step(
             If None, no limit is applied. Default: None.
         cache_history (Optional[List[Tuple[mx.array, mx.array]]]): The history of
             key-value pairs for each layer to initialize the cache. Default: None.
+        model_with_scores (Optional[bool]): Whether the model returns scores in to the
+            output. Default: True.
 
     Yields:
         int: The next generated token id.
@@ -64,12 +66,19 @@ def generate_step(
             c.update_and_fetch(h[0], h[1])
         mx.eval([c.state for c in cache])
 
-    def _step(y):
-        logits = model(y[None], cache=cache)
-        logits = logits[:, -1, :]
+    if model_with_scores:
+        def _step(y):
+            logits, scores, attention_stats = model(y[None], cache=cache)
+            #logits = logits[:, -1, :]
+            y = sample(y, logits, scores, temp, top_p, top_k)
+            return y
+    else:
+        def _step(y):
+            logits = model(y[None], cache=cache)
+            logits = logits[:, -1, :]
 
-        y = sample(y, logits, temp, top_p, top_k)
-        return y
+            y = sample(y, logits, temp, top_p, top_k)
+            return y
 
     while y.size > prefill_step_size:
         model(y[:prefill_step_size][None], cache=cache)
@@ -92,6 +101,7 @@ def generate(
     max_tokens: int = 100,
     verbose: bool = False,
     formatter: Optional[Callable] = None,
+    model_with_scores: bool = True,
     **kwargs,
 ) -> Union[str, Generator[str, None, None]]:
     """
@@ -123,7 +133,7 @@ def generate(
     detokenizer.reset()
 
     for (token), n in zip(
-        generate_step(prompt_tokens, model, **kwargs),
+        generate_step(prompt_tokens, model, model_with_scores=model_with_scores, **kwargs),
         range(max_tokens),
     ):
         if n == 0:
