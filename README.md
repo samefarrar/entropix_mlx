@@ -34,6 +34,10 @@ Future supported models:
   DeepSeekV2+
   Mistral Large (123B)
 
+# TODOS:
+- Efficient top_k and min_p algorithms. Those currently stretch what you can do on a macbook.
+- Implement adaptive sampling in a way that doesn't immediately OOM me.
+
 # Getting Started
 [install uv](https://github.com/astral-sh/uv)
 
