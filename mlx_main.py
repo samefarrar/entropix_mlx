@@ -1,10 +1,11 @@
-from mlx_lm import load
 import argparse
 import time
 import mlx.core as mx
 import pathlib
 from typing import Optional, List, Tuple, Union
 from mlx_generate import generate
+from mlx_model import load_entropix_model
+import inspect
 
 prompt1 = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 <antThinking>
@@ -138,8 +139,10 @@ def main():
         print("No input provided. Use --prompts to use predefined prompts from mlx_entropix.prompts or provide a custom prompt using --input")
         print("Exiting...")
 
-    model, tokenizer = load("weights/1B-Instruct")
-    max_tokens = 8192
+    model, tokenizer = load_entropix_model("weights/Llama-3.2-1B-Instruct")
+    max_tokens = 4096
+
+    print("Generating text using Entropy based sampling...")
 
     for prompt in prompts_to_use:
         messages = [{"role": "user", "content": prompt}]
