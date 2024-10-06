@@ -1,4 +1,3 @@
-from mlx_lm import load
 from mlx_lm.utils import apply_repetition_penalty, make_kv_caches
 from mlx_lm.tokenizer_utils import TokenizerWrapper
 from mlx_lm.models.base import KVCache, RotatingKVCache
@@ -65,7 +64,7 @@ def generate_step(
         mx.eval([c.state for c in cache])
 
     def _step(y):
-        logits = model(y[None], cache=cache)
+        logits, _, _ = model(y[None], cache=cache)
         logits = logits[:, -1, :]
 
         y = sample(y, logits, temp, top_p, top_k)
