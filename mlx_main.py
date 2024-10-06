@@ -5,6 +5,8 @@ import pathlib
 from typing import Optional, List, Tuple, Union
 from mlx_generate import generate
 from mlx_model import load_entropix_model
+from mlx_lm import load
+from mlx_lm import generate as generate_lm
 import inspect
 
 prompt1 = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
@@ -126,20 +128,27 @@ prompts = [prompt1, prompt2, prompt3, prompt4, prompt5]
 
 def main():
     parser = argparse.ArgumentParser(description = "Generate text using Entropy based sampling based on input prompts")
-    parser.add_argument("--prompt", action="store_true", help = "Use predefined prompts from mlx_entropix.prompts")
+    parser.add_argument("--prompts", action="store_true", help = "Use predefined prompts from mlx_entropix.prompts")
     parser.add_argument("--input", type = str, help = "Input prompt to generate text")
+    parser.add_argument("--entropix", action="store_true", default=True, help="Use Entropix model for generation")
+    parser.add_argument("--normal", action="store_true", help="Use normal model for generation")
     args = parser.parse_args()
 
 
     if args.input:
         prompts_to_use = [args.input]
-    elif args.prompt:
+    elif args.prompts:
         prompts_to_use = prompts
     else:
         print("No input provided. Use --prompts to use predefined prompts from mlx_entropix.prompts or provide a custom prompt using --input")
         print("Exiting...")
 
-    model, tokenizer = load_entropix_model("weights/Llama-3.2-1B-Instruct")
+    if args.normal:
+        model, tokenizer = load("weights/Llama-3.2-1B-Instruct")
+        model_with_scores = False
+    else:
+        model, tokenizer = load_entropix_model("weights/Llama-3.2-1B-Instruct")
+        model_with_scores = True
     max_tokens = 4096
 
     print("Generating text using Entropy based sampling...")
@@ -149,7 +158,7 @@ def main():
         prompt = tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=False
         )
-        response = generate(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens)
+        response = generate(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens, model_with_scores=model_with_scores)
 
 if __name__ == "__main__":
     main()
