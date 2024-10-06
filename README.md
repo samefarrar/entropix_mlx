@@ -48,5 +48,5 @@ uv run mlx_download_weights.py
 ```
 
 ```bash
-uv run mlx_generate.py
+uv run mlx_main.py
 ```
