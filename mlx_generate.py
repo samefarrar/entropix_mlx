@@ -68,10 +68,9 @@ def generate_step(
 
     if model_with_scores:
         def _step(y):
-            logits, _, _ = model(y[None], cache=cache)
-            logits = logits[:, -1, :]
-
-            y = sample(y, logits, temp, top_p, top_k)
+            logits, scores, attention_stats = model(y[None], cache=cache)
+            #logits = logits[:, -1, :]
+            y = sample(y, logits, scores, temp, top_p, top_k)
             return y
     else:
         def _step(y):
