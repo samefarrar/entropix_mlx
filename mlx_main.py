@@ -1,4 +1,5 @@
 from mlx_lm import load
+import argparse
 import time
 import mlx.core as mx
 import pathlib
@@ -62,37 +63,90 @@ Tell me a long and wonderful story about the adventures of the elven mage friere
 """
 
 prompt5 = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
-You are an AI assistant specialized in extracting information from biographical texts. Your task is to analyze the given bio and extract specific details, then return them as function parameters.
+The following is a multiple choice question in a Medical exam. Please provide the correct answer, along with a final explanation after
+thinking through the question. Provide your final answer, e.g. "A", "B", "C", or "D", within <answer> tags.
 
-Here's the function you should use to return the extracted information:
+For example:
+<|eot_id|><|start_header_id|>user<|end_header_id|>
+A patient presents with a history of recurrent episodes of abdominal pain, bloating, and diarrhea. The symptoms are relieved by defecation. Which of the following is the most likely diagnosis?
+A. Irritable bowel syndrome
+B. Crohn's disease
+C. Ulcerative colitis
+D. Celiac disease
 
-def extract_bio_details(name: str, age: int, occupation: str, notable_achievement: str):
-    pass
+<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+<thinking> Let's think through this step-by-step:
 
-Read the following bio carefully and extract the required information. Then, call the function with the appropriate parameters.<|eot_id|><|start_header_id|>user<|end_header_id|>
+1. The patient has recurrent episodes, which suggests a chronic condition.
+2. The main symptoms are:
+   - Abdominal pain
+   - Bloating
+   - Diarrhea
+3. Importantly, the symptoms are relieved by defecation.
 
-Bio: In the bustling halls of neuroscience research, one name has been making waves and challenging long-held beliefs about the human brain's capacity for change and healing. Dr. Emily Chen, a dedicated scientist who celebrated her 42nd birthday just last month, has become a beacon of hope for millions suffering from neurological disorders. Born to immigrant parents who instilled in her a profound work ethic and curiosity about the world, Emily's journey into the complex realm of neuroscience began with a childhood fascination with puzzles and problem-solving.
+Now, let's consider each option:
 
-After earning her Ph.D. from a prestigious institution, where she was known for burning the midnight oil in the lab, Dr. Chen embarked on a career that would soon redefine our understanding of brain plasticity. Her groundbreaking research, which has spanned over a decade and involved countless hours of meticulous experimentation, has unveiled revolutionary insights into the brain's ability to adapt and regenerate.
+A. Irritable Bowel Syndrome (IBS):
+   - IBS is characterized by recurrent abdominal pain, bloating, and changes in bowel habits.
+   - Symptoms are often relieved by defecation.
+   - It's a functional disorder without structural abnormalities.
 
-One of her most notable achievements came after years of perseverance and numerous setbacks. In a moment that her colleagues describe as "eureka-like," Dr. Chen discovered a novel mechanism for neural regeneration that had eluded scientists for generations. This breakthrough, published in a landmark paper that sent ripples through the scientific community, has opened up exciting new avenues for treating a wide array of neurodegenerative diseases that were once thought to be irreversible.
+B. Crohn's Disease:
+   - This is an inflammatory bowel disease.
+   - It can cause abdominal pain and diarrhea, but symptoms are not typically relieved by defecation.
+   - Often involves more severe symptoms and can affect any part of the digestive tract.
 
-Dr. Chen's work doesn't just reside in academic journals; it has real-world implications that are already beginning to transform lives. Patients with conditions like Alzheimer's, Parkinson's, and stroke-induced brain damage now have reason to hope, thanks to the tireless efforts of this brilliant neuroscientist and her team of dedicated researchers.
+C. Ulcerative Colitis:
+   - Another inflammatory bowel disease.
+   - Causes abdominal pain and diarrhea, but symptoms are not typically relieved by defecation.
+   - Specifically affects the colon and rectum.
 
-When not in the lab, Dr. Chen is known for her passion for science communication, often giving engaging talks that make complex neuroscience accessible to the public. Her ability to bridge the gap between cutting-edge research and practical applications has made her a sought-after speaker and consultant in both academic and industry circles.
+D. Celiac Disease:
+   - An autoimmune disorder triggered by gluten.
+   - Can cause abdominal pain and diarrhea, but symptoms are not typically relieved by defecation.
+   - Usually accompanied by other symptoms like fatigue and weight loss.
 
-As we look to the future of neuroscience and medical treatment, it's clear that Dr. Emily Chen's contributions will continue to shape our understanding of the brain and its incredible potential for healing and adaptation for years to come.<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+Given the description, especially the relief of symptoms after defecation, the most likely diagnosis is Irritable Bowel Syndrome (IBS). IBS is a functional gastrointestinal disorder that matches the described symptoms perfectly, including the relief after bowel movements.
+</thinking>
+<answer>A</answer>
+
+<|eot_id|><|start_header_id|>user<|end_header_id|>
+Which of the following is a correct description of a language learning disability?
+A It shows difficulties in reading and writing.
+B It does not show problems with higher-level language abilities.
+C It occurs due to visual or motor disabilities.
+D It often accompanies autism spectrum disorder
+
+<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+<thinking>
 """
 
 prompts = [prompt1, prompt2, prompt3, prompt4, prompt5]
 
-if __name__ == "__main__":
-    model, tokenizer = load("weights/1B-Instruct")
-    max_tokens = 2048
+def main():
+    parser = argparse.ArgumentParser(description = "Generate text using Entropy based sampling based on input prompts")
+    parser.add_argument("--prompt", action="store_true", help = "Use predefined prompts from mlx_entropix.prompts")
+    parser.add_argument("--input", type = str, help = "Input prompt to generate text")
+    args = parser.parse_args()
 
-    for prompt in prompts:
+
+    if args.input:
+        prompts_to_use = [args.input]
+    elif args.prompt:
+        prompts_to_use = prompts
+    else:
+        print("No input provided. Use --prompts to use predefined prompts from mlx_entropix.prompts or provide a custom prompt using --input")
+        print("Exiting...")
+
+    model, tokenizer = load("weights/1B-Instruct")
+    max_tokens = 8192
+
+    for prompt in prompts_to_use:
         messages = [{"role": "user", "content": prompt}]
         prompt = tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=False
         )
         response = generate(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens)
+
+if __name__ == "__main__":
+    main()

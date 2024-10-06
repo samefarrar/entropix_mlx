@@ -27,6 +27,7 @@ def sample(
 
     # High Entropy, Low Varentropy: "treading carefully, asking clarifying questions"
     elif ent > 5.0 and vent < 0.1:
+        #print(f"[he,lv]", flush = True, end = "")
         # Insert a clarifying question token if not already present
         if not mx.any(mx.equal(gen_tokens, 2564)):
             return mx.array(
@@ -38,6 +39,7 @@ def sample(
 
     # Low Entropy, High Varentropy: "exploring forks in the path"
     elif ent < 5.0 and vent > 5.0:
+        #print(f"[me,hv]", flush = True, end = "")
         # TODO(xjdr): Implement proper branching logic
         # Return top-k tokens to allow for branching
         # top_k_values, top_k_indices = mx.top_k(logits[:, -1], k=top_k)
@@ -46,6 +48,7 @@ def sample(
 
     # High Entropy, High Varentropy: "resampling in the mist"
     elif ent > 5.0 and vent > 5.0:
+        #print(f"[he,hv]", flush = True, end = "")
         # print(f"[he,hv]")
         # Use high temperature and min_p sampling
         return _sample(logits, temperature=max(2.0, temperature * 3))
