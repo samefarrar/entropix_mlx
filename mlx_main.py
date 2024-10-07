@@ -5,14 +5,13 @@ import pathlib
 from typing import Optional, List, Tuple, Union
 from mlx_model import load_entropix_model
 from mlx_lm.utils import load
+from mlx_lm.tokenizer_utils import load_tokenizer
 from mlx_lm.utils import generate as generate_mlx_lm
 from mlx_generate import generate
 from mlx_sampler import SamplerConfig
 from mlx_prompts import create_prompts_from_csv, prompt1, prompt2, prompt3, prompt4, prompt5, thinking_prompt, o1_claude_prompt
 import inspect
 from pathlib import Path
-
-prompts = [prompt1, prompt2, prompt3, prompt4, prompt5]
 
 def main():
     parser = argparse.ArgumentParser(description = "Generate text using Entropy based sampling based on input prompts")
@@ -40,7 +39,7 @@ def main():
         }
     else:
         path = Path("weights/Llama-3.2-1B-Instruct")
-        _, tokenizer = load("weights/Llama-3.2-1B-Instruct")
+        tokenizer = load_tokenizer(path)
         model = load_entropix_model(path)
         model_with_scores = True
     max_tokens = 4096
@@ -69,6 +68,7 @@ def main():
             else:
                 response = generate(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens)
     elif args.prompts:
+        prompts = [prompt1, prompt2, prompt3, prompt4, prompt5]
         for prompt in prompts:
             messages = [{"role": "user", "content": prompt}]
             prompt = tokenizer.apply_chat_template(

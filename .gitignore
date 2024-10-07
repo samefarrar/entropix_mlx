@@ -6,7 +6,6 @@ tokenizer.model
 uv.lock
 converted
 ui/bun.lockb
-ui/package.json
 
 # boilerplate from here on down
 *__pycache__*
