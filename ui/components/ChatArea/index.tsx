@@ -70,7 +70,8 @@ function ChatArea() {
       content: input,
     };
 
-    setMessages((prevMessages) => [...prevMessages, userMessage]);
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
     setInput("");
 
     try {
@@ -84,18 +85,18 @@ function ChatArea() {
         // Streaming logic
         setMessages((prevMessages) => [...prevMessages, assistantMessage]);
 
-        await sendMessage(input, selectedModel, (update) => {
+        await sendMessage(updatedMessages, selectedModel, (update) => {
           setMessages((prevMessages) =>
             prevMessages.map((msg) =>
               msg.id === assistantMessage.id
-                ? { ...msg, content: JSON.stringify({ response: update }) }
+                ? { ...msg, content: update }
                 : msg,
             ),
           );
         });
       } else {
         // Non-streaming logic
-        const response = await sendMessage(input, selectedModel);
+        const response = await sendMessage(updatedMessages, selectedModel);
         assistantMessage.content = response;
         setMessages((prevMessages) => [...prevMessages, assistantMessage]);
       }
