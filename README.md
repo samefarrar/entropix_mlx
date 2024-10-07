@@ -7,7 +7,8 @@ Entropy Based Sampling and Parallel CoT Decoding
 
 The goal is to use entropy to make context aware sampling. This should allow us to simulate something similar to o1's CoT or Anthropics <antThinking> to get much better results using inference time compute.
 
-This project is a research project and a work in process. Its comprised of an inference stack, the sampler, and a UI (future). Please reach out to me on X if you have any question or concerns @_xjdr
+This project is a research project and a work in process. Its comprised of an inference stack, the sampler, and a UI (future). Please reach out to me on X if you have any question or concerns @_xjdr (original idea and implementation).
+@samefarrar (MLX implementation).
 
 HERE BE DRAGONS!!!! THIS IS NOT A FINISHED PRODUCT AND WILL BE UNSTABLE AS HELL RIGHT NOW
 
@@ -26,7 +27,6 @@ And in those moments of low entropy and low varentropy, when the path ahead seem
 
 <img width="753" alt="image" src="https://github.com/user-attachments/assets/f31b7ec7-29ed-4b4e-bf68-caeee72edadb">
 
-
 Current supported models:
   llama3.1+
 
@@ -35,8 +35,8 @@ Future supported models:
   Mistral Large (123B)
 
 # TODOS:
-- Efficient top_k and min_p algorithms. Those currently stretch what you can do on a macbook.
-- Implement adaptive sampling in a way that doesn't immediately OOM me.
+- Get UI working with MLX sampler
+- **Figure out a way to run adaptive sampling with more than 1 branch without going OOM.**
 
 # Getting Started
 [install uv](https://github.com/astral-sh/uv)
@@ -54,3 +54,46 @@ uv run mlx_download_weights.py
 ```bash
 uv run mlx_main.py
 ```
+
+### Options
+- `--prompts`: Use predefined prompts from `mlx_entropix.prompts`
+- `--prompt_csv`: Use prompts from `data/prompts.csv`
+- `--input TEXT`: Provide a custom input prompt
+- `--entropix`: Use Entropix model for generation (default)
+- `--normal`: Use normal model for generation
+
+### Functionality
+1. **Model Loading**:
+   - Loads either a standard language model or an Entropix model based on the specified options.
+   - Uses the Llama-3.2-1B-Instruct model by default.
+
+2. **Input Processing**:
+   - Supports single custom input, predefined prompts, or prompts from a CSV file.
+   - Applies chat template to format prompts correctly.
+
+3. **Text Generation**:
+   - Generates text using either the mlx_lm `generate_mlx_lm` function or the Entropix `generate` function.
+   - Supports a maximum token limit of 4096.
+
+4. **Output**:
+   - Prints generated text to the console.
+
+### Examples
+1. Use predefined prompts:
+   ```
+   python mlx_main.py --prompts
+   ```
+
+2. Use a custom input:
+   ```
+   python mlx_main.py --input "What is the capital of France?"
+   ```
+
+3. Use normal sampling instead of Entropix:
+   ```
+   python mlx_main.py --normal --input "Explain quantum computing"
+   ```
+
+### Notes
+- Ensure all required dependencies are installed and the model weights are downloaded before running the script.
+- The Entropix model is used by default unless the `--normal` flag is specified.
