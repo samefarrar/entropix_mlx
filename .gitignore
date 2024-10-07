@@ -5,6 +5,7 @@ weights/
 tokenizer.model
 uv.lock
 converted
+ui/bun.lockb
 
 # boilerplate from here on down
 *__pycache__*
