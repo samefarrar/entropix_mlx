@@ -8,7 +8,7 @@ from mlx_lm.utils import load
 from mlx_lm.utils import generate as generate_mlx_lm
 from mlx_generate import generate
 from mlx_sampler import SamplerConfig
-from mlx_prompts import create_prompts_from_csv, prompt1, prompt2, prompt3, prompt4, prompt5, thinking_prompt
+from mlx_prompts import create_prompts_from_csv, prompt1, prompt2, prompt3, prompt4, prompt5, thinking_prompt, o1_claude_prompt
 import inspect
 from pathlib import Path
 
