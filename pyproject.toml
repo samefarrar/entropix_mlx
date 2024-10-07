@@ -23,7 +23,6 @@ dependencies = [
     "torch>=2.4.1",
     "transformers>=4.45.1",
     "tyro>=0.8.11",
-    "bun>=0.0.8",
 ]
 
 [tool.pyright]
