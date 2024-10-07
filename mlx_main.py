@@ -3,10 +3,10 @@ import time
 import mlx.core as mx
 import pathlib
 from typing import Optional, List, Tuple, Union
-from mlx_generate import generate
 from mlx_model import load_entropix_model
-from mlx_lm import load
-from mlx_lm import generate as generate_lm
+from mlx_lm.utils import load
+from mlx_lm.utils import generate as generate_mlx_lm
+from mlx_generate import generate
 import inspect
 from pathlib import Path
 
@@ -101,22 +101,25 @@ def main():
         model_with_scores = True
     max_tokens = 4096
 
-    print("Generating text using Entropy based sampling...")
-
     if args.input:
         input = thinking_prompt.format(args.input)
         messages = [{"role": "user", "content": input}]
         prompt = tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=False
         )
-        response = generate(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens, model_with_scores=model_with_scores)
+        if args.normal:
+            response = generate_mlx_lm(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens)
+        else:
+            response = generate(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens)
     else:
         for prompt in prompts:
             messages = [{"role": "user", "content": prompt}]
             prompt = tokenizer.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=False
             )
-            response = generate(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens, model_with_scores=model_with_scores)
+            if args.normal:
+                response = generate_mlx_lm(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens)
+            response = generate(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens)
 
 if __name__ == "__main__":
     main()
