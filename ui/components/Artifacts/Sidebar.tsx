@@ -1,13 +1,14 @@
-"use client"
+"use client";
 
-import { useState } from 'react'
-import { X, SlidersHorizontal, Code, Image } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useState } from "react";
+import { X, SlidersHorizontal, Code, Image, Zap } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useTheme } from "next-themes";
+import { Toggle } from "@/components/ui/toggle";
 
 interface ArtifactContent {
   id: string;
-  type: 'code' | 'image';
+  type: "code" | "image";
   name: string;
   versions: number;
 }
@@ -16,16 +17,24 @@ interface ArtifactSidebarProps {
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
   artifacts: ArtifactContent[];
+  isStreamingEnabled: boolean;
+  setIsStreamingEnabled: (isEnabled: boolean) => void;
 }
 
-export default function ArtifactSidebar({ isOpen, setIsOpen, artifacts }: ArtifactSidebarProps) {
+export default function ArtifactSidebar({
+  isOpen,
+  setIsOpen,
+  artifacts,
+  isStreamingEnabled,
+  setIsStreamingEnabled,
+}: ArtifactSidebarProps) {
   const { theme } = useTheme();
-  const toggleSidebar = () => setIsOpen(!isOpen)
+  const toggleSidebar = () => setIsOpen(!isOpen);
 
   const sidebarVariants = {
     open: { x: 0 },
     closed: { x: "100%" },
-  }
+  };
 
   return (
     <>
@@ -41,12 +50,17 @@ export default function ArtifactSidebar({ isOpen, setIsOpen, artifacts }: Artifa
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
             className="fixed inset-y-0 right-0 w-80 bg-background text-foreground overflow-y-auto shadow-lg mt-16 border-l border-border rounded-l-lg"
           >
-            <SidebarContent onClose={toggleSidebar} artifacts={artifacts} />
+            <SidebarContent
+              onClose={toggleSidebar}
+              artifacts={artifacts}
+              isStreamingEnabled={isStreamingEnabled}
+              setIsStreamingEnabled={setIsStreamingEnabled}
+            />
           </motion.div>
         )}
       </AnimatePresence>
     </>
-  )
+  );
 }
 
 const ToggleButton = ({ onClick, count }) => (
@@ -62,37 +76,50 @@ const ToggleButton = ({ onClick, count }) => (
       {count}
     </span>
   </motion.button>
-)
+);
 
-const SidebarContent = ({ onClose, artifacts }) => (
+const SidebarContent = ({
+  onClose,
+  artifacts,
+  isStreamingEnabled,
+  setIsStreamingEnabled,
+}) => (
   <div className="p-4">
     <SidebarHeader onClose={onClose} />
     <ModelInfo />
+    <StreamingToggle
+      isStreamingEnabled={isStreamingEnabled}
+      setIsStreamingEnabled={setIsStreamingEnabled}
+    />
     <ArtifactsList artifacts={artifacts} />
     <ContentSection />
   </div>
-)
+);
 
 const SidebarHeader = ({ onClose }) => (
   <div className="flex justify-between items-center mb-4">
     <h2 className="text-[15px] font-semibold leading-tight">Chat controls</h2>
-    <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close sidebar">
+    <button
+      onClick={onClose}
+      className="text-muted-foreground hover:text-foreground"
+      aria-label="Close sidebar"
+    >
       <X size={18} />
     </button>
   </div>
-)
+);
 
 const ModelInfo = () => (
   <div className="mb-6">
     <p className="text-[15px] font-medium leading-tight">Ironwood ATLAS</p>
     <p className="text-[13px] text-gray-400 mt-0.5">
-      Most intelligent model{' '}
+      Most intelligent model{" "}
       <a href="#" className="text-[#7dabf8] hover:underline">
         Learn more
       </a>
     </p>
   </div>
-)
+);
 
 const ArtifactsList = ({ artifacts }) => (
   <div className="mb-6">
@@ -103,7 +130,7 @@ const ArtifactsList = ({ artifacts }) => (
       ))}
     </div>
   </div>
-)
+);
 
 const ArtifactItem = ({ item }) => (
   <motion.div
@@ -113,17 +140,18 @@ const ArtifactItem = ({ item }) => (
   >
     <div className="flex items-start">
       <span className="text-muted-foreground mr-2.5 mt-0.5 font-mono text-sm">
-        {item.type === 'code' ? <Code size={16} /> : <Image size={16} />}
+        {item.type === "code" ? <Code size={16} /> : <Image size={16} />}
       </span>
       <div>
         <p className="text-[13px] font-medium leading-tight">{item.name}</p>
         <p className="text-[11px] text-muted-foreground mt-0.5">
-          Click to open {item.type} • {item.versions} version{item.versions > 1 ? 's' : ''}
+          Click to open {item.type} • {item.versions} version
+          {item.versions > 1 ? "s" : ""}
         </p>
       </div>
     </div>
   </motion.div>
-)
+);
 
 const ContentSection = () => (
   <div>
@@ -134,7 +162,7 @@ const ContentSection = () => (
       ))}
     </div>
   </div>
-)
+);
 
 const ContentItem = () => (
   <motion.div
@@ -147,4 +175,33 @@ const ContentItem = () => (
     </div>
     <span className="text-[13px]">image.png</span>
   </motion.div>
-)
+);
+
+const StreamingToggle = ({ isStreamingEnabled, setIsStreamingEnabled }) => {
+  return (
+    <div className="mb-6">
+      <h3 className="text-[15px] font-semibold mb-2 leading-tight">
+        Streaming
+      </h3>
+      <Toggle
+        pressed={isStreamingEnabled}
+        onPressedChange={(newValue) => {
+          if (typeof setIsStreamingEnabled === "function") {
+            setIsStreamingEnabled(newValue);
+          } else {
+            console.error("setIsStreamingEnabled is not a function");
+          }
+        }}
+        className="w-full justify-between"
+      >
+        <span className="text-[13px]">Enable streaming</span>
+        <Zap
+          size={16}
+          className={
+            isStreamingEnabled ? "text-primary" : "text-muted-foreground"
+          }
+        />
+      </Toggle>
+    </div>
+  );
+};
