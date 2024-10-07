@@ -2,6 +2,7 @@ from mlx_lm.utils import make_kv_caches
 import mlx.core as mx
 import mlx.nn as nn
 from typing import Optional, List, Tuple, Union, Dict
+from functools import partial
 
 LN_2 = 0.69314718056  # ln(2)
 
@@ -16,6 +17,7 @@ def calculate_varentropy_logsoftmax(
     varentropy = mx.sum(probs * (log_probs / LN_2 + entropy[..., None]) ** 2, axis=axis)
     return entropy, varentropy
 
+@mx.compile
 def calculate_metrics(logits: mx.array, attention_scores: mx.array) -> Dict[str, mx.array]:
     entropy, varentropy = calculate_varentropy_logsoftmax(logits)
 
@@ -141,40 +143,23 @@ def adaptive_sample(
     best_sample_idx = mx.argmax(mx.array(sample_scores)).item()
     return samples[best_sample_idx]
 
-
-def top_k_values_and_indices(arr, k):
-    # Get the indices of the top K elements
-    top_k_indices = mx.argpartition(arr, -k)[-k:]
-    # Get the top K values using the indices
-    top_k_values = arr[top_k_indices]
-    # Sort the top K values and indices in descending order
-    sorted_indices = mx.argsort(top_k_values)[::-1]
-    return top_k_values[sorted_indices], top_k_indices[sorted_indices]
-
-def _sample(logits: mx.array, temperature=0.5, top_p=0.9, top_k=27, min_p: float = 0.0) -> mx.array:
-    batch_size = logits.shape[0]
+@partial(mx.compile, inputs=mx.random.state, outputs=mx.random.state)
+def _sample(logits: mx.array, temperature=0.666, top_p=0.9, top_k:int = 27, min_p: float = 0.0) -> mx.array:
     logit = logits[:, -1]  # (batch_size, vocab_size)
-    probs = mx.softmax(logit * (1 / temperature), axis=-1) # (batch_size, vocab_size)
+    probs = mx.softmax(logit * (1 / temperature), axis=-1)
 
-    # Min_p sampling
-    # if min_p > 0.0:
-    #     p_max = mx.max(probs, axis=-1)
-    #     indices_to_remove = probs < (min_p * p_max)
-    #     logit = mx.where(indices_to_remove, 0, logit)
-
-    # Top-p sampling
-    sorted_probs = mx.sort(probs, axis=-1)[::-1]
-    sorted_indices = mx.argsort(probs, axis=-1)[::-1]
-    sorted_logits = mx.sort(logit, axis=-1)[::-1]
+    # sort probs in ascending order
+    sorted_indices = mx.argsort(probs, axis=-1).squeeze(0)
+    sorted_probs = probs[..., sorted_indices]
 
     cumulative_probs = mx.cumsum(sorted_probs, axis=-1)
-    masked_logits = mx.where(
+
+    top_probs = mx.where(
         cumulative_probs > 1 - top_p,
-        sorted_logits,
-        0
+        sorted_probs,
+        0,
     )
 
-    sorted_token = mx.random.categorical(masked_logits) # (batch_size, 1)
-    token = sorted_indices.squeeze(0)[sorted_token]
-    #token = mx.take_along_axis(sorted_indices, sorted_token, axis=-1)
+    sorted_token = mx.random.categorical(mx.log(top_probs))
+    token = sorted_indices[sorted_token]
     return token
