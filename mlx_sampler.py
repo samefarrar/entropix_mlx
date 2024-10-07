@@ -85,15 +85,15 @@ def sample(
 
     # Middle ground: smooth transition
     else:
+        # Adjust temperature and top_k based on attention metrics
         #print("~", flush = True, end = "")
         t = mx.clip((ent + vent) / 10.0, 0.5, 2.0)
-        # Adjust temperature and top_k based on attention metrics
         temp_adj = t + 0.2 * attention_entropy + 0.1 * attention_varentropy
         top_k_adj = max(5, int(top_k * (1 + 0.3 * interaction_strength - 0.2 * agreement)))
         return _sample(logits, temperature=temp_adj * temperature, top_p=top_p, top_k=top_k_adj, min_p=min_p)
         # Interpolate temperature based on entropy and varentropy
         # return adaptive_sample(
-        #     logits, metrics, gen_tokens, n_samples=5, base_temperature=temperature, base_top_p=top_p, base_top_k=top_k, base_min_p=min_p
+        #     logits, metrics, gen_tokens, n_samples=2, base_temperature=temperature, base_top_p=top_p, base_top_k=top_k, base_min_p=min_p
         # )
 
 def adaptive_sample(
@@ -143,23 +143,38 @@ def adaptive_sample(
     best_sample_idx = mx.argmax(mx.array(sample_scores)).item()
     return samples[best_sample_idx]
 
-@partial(mx.compile, inputs=mx.random.state, outputs=mx.random.state)
-def _sample(logits: mx.array, temperature=0.666, top_p=0.9, top_k:int = 27, min_p: float = 0.0) -> mx.array:
-    logit = logits[:, -1]  # (batch_size, vocab_size)
-    probs = mx.softmax(logit * (1 / temperature), axis=-1)
+def _sample(logits: mx.array, temperature=0.666, top_p=0.9, top_k:int = 27, min_p: float = 0.0, min_tokens_to_keep: int = 2) -> mx.array:
+    logit = logits[:, -1] / temperature  # (batch_size, vocab_size)
 
-    # sort probs in ascending order
-    sorted_indices = mx.argsort(probs, axis=-1).squeeze(0)
-    sorted_probs = probs[..., sorted_indices]
+    # Calculate probabilities by softmaxing the temparature-scaled logits
+    probs = mx.softmax(logit, axis=-1)
 
-    cumulative_probs = mx.cumsum(sorted_probs, axis=-1)
+    # Sort probabilities in descending order
+    # This should then look like
+    sorted_indices = mx.argsort(-probs, axis=-1).squeeze(0) # e.g. [3, 1280, 1, 0, 2, ...]
+    sorted_probs = probs[..., sorted_indices] # e.g. [0.9, 0.05, 0.02, 0.01, 0.01, ...]
 
-    top_probs = mx.where(
-        cumulative_probs > 1 - top_p,
-        sorted_probs,
-        0,
-    )
+    # Apply min_p sampling
+    if min_p > 0:
+        top_prob = sorted_probs[..., 0] # Highest probability e.g. [0.9]
+        scaled_min_p = min_p * top_prob # e.g. 0.9 * 0.1 = 0.09
+        min_p_mask = sorted_probs > scaled_min_p # e.g. [True, False, False, False, False, ...]
+        min_p_mask[..., :min_tokens_to_keep] = True # Keep at least min_tokens_to_keep tokens, e.g. [True, True, True, False, False, ...]
+        sorted_probs = mx.where(min_p_mask, sorted_probs, 0.0) # e.g. [0.9, 0.0, 0.0, 0.0, 0.0, ...]
 
-    sorted_token = mx.random.categorical(mx.log(top_probs))
+    # Apply top_p (nucleus) sampling
+    cumulative_probs = mx.cumsum(sorted_probs, axis=-1, inclusive = False) # e.g. [0.9, 0.95, 0.97, 0.98, 0.99, ...]
+    # or, if min_p is applied, [0.9, 0.0, 0.0, 0.0, 0.0, ...]
+    top_p_mask = cumulative_probs <= top_p # e.g. [True, True, True, True, True, ...]
+    # or, if min_p is applied, [True, False, False, False, False, ...]
+    top_p_mask[..., :min_tokens_to_keep] = True #
+    sorted_probs = mx.where(top_p_mask, sorted_probs, 0.0)
+
+    # Optionally apply top_k sampling
+    sorted_probs[..., top_k:] = 0.0
+
+    # Sample token
+    sorted_token = mx.random.categorical(mx.log(sorted_probs))
     token = sorted_indices[sorted_token]
+
     return token
