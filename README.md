@@ -81,17 +81,17 @@ uv run mlx_main.py
 ### Examples
 1. Use predefined prompts:
    ```
-   python mlx_main.py --prompts
+   uv run mlx_main.py --prompts
    ```
 
 2. Use a custom input:
    ```
-   python mlx_main.py --input "What is the capital of France?"
+   uv run mlx_main.py --input "What is the capital of France?"
    ```
 
 3. Use normal sampling instead of Entropix:
    ```
-   python mlx_main.py --normal --input "Explain quantum computing"
+   uv run mlx_main.py --normal --input "Explain quantum computing"
    ```
 
 ### Notes
