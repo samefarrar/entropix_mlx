@@ -2,7 +2,6 @@ from mlx_lm.utils import make_kv_caches
 import mlx.core as mx
 import mlx.nn as nn
 from typing import Optional, List, Tuple, Union, Dict
-from functools import partial
 
 LN_2 = 0.69314718056  # ln(2)
 
