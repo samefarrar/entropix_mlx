@@ -15,10 +15,7 @@ LN_2 = 0.69314718056  # ln(2)
 def generate_step(
     prompt: mx.array,
     model: nn.Module,
-    temp: float = 0.666,
-    top_p: float = 0.9,
-    top_k: int = 0,
-    prefill_step_size: int = 512,
+    prefill_step_size: int = 1024,
     max_kv_size: Optional[int] = None,
     cache_history: Optional[List[Tuple[mx.array, mx.array]]] = None,
     sampler_config: SamplerConfig = SamplerConfig(),

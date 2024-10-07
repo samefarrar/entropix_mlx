@@ -11,8 +11,7 @@ from mlx_model import load_entropix_model
 from mlx_generate import generate_step as generate_step
 from mlx_lm.utils import generate_step as generate_step_mlx_lm
 from mlx_sampler import SamplerConfig
-from mlx_lm.server import APIHandler, stopping_criteria
-from mlx_lm.server import ModelProvider
+from mlx_lm.server import APIHandler, stopping_criteria, ModelProvider, sequence_overlap
 from typing import List
 
 class EntropixModelProvider(ModelProvider):
@@ -115,6 +114,74 @@ class EntropixAPIHandler(APIHandler):
         self.wfile.write(response_json)
         self.wfile.flush()
 
+    def handle_stream(self, prompt, stop_id_sequences: List[List[int]]):
+        """
+        Generate response to prompt and forward it to the client using a Server Sent Events
+        (SSE) stream.
+        """
+
+        self.end_headers()
+
+        detokenizer = self.tokenizer.detokenizer
+        detokenizer.reset()
+
+        tokens = []
+
+        stop_sequence_suffix = None
+
+        logging.debug(f"Starting stream:")
+
+        for token, _ in zip(
+            generate_step(
+                prompt,
+                model=self.model,
+                sampler_config=self.sampler_config,
+            ),
+            range(self.max_tokens)
+        ):
+            detokenizer.add_token(token)
+            logging.debug(detokenizer.text)
+            tokens.append(token)
+
+            stop_condition = stopping_criteria(
+                tokens, stop_id_sequences, self.tokenizer.eos_token_id
+            )
+
+            if stop_condition.stop_met:
+                if stop_condition.trim_length:
+                    stop_sequence_suffix = self.tokenizer.decode(
+                        tokens[-stop_condition.trim_length :]
+                    )
+                break
+
+            if any(
+                (sequence_overlap(tokens, sequence) for sequence in stop_id_sequences)
+            ):
+                continue
+
+            new_text = detokenizer.last_segment
+            response = self.generate_response(new_text, None)
+
+            self.wfile.write(f"data: {json.dumps(response)}\n\n".encode())
+            self.wfile.flush()
+
+        detokenizer.finalize()
+        last_segment = detokenizer.last_segment
+        if last_segment:
+            if stop_sequence_suffix is not None:
+                last_segment = last_segment[: -len(stop_sequence_suffix)]
+            response = self.generate_response(last_segment, "length")
+            self.wfile.write(f"data: {json.dumps(response)}\n\n".encode())
+            self.wfile.flush()
+
+        if self.stream_options is not None and self.stream_options["include_usage"]:
+            response = self.completion_usage_response(len(prompt), len(tokens))
+            self.wfile.write(f"data: {json.dumps(response)}\n\n".encode())
+
+        self.wfile.write("data: [DONE]\n\n".encode())
+        self.wfile.flush()
+
+
 def run_server(host, port, model_provider, normal = False):
     server_address = (host, port)
     sampler_config = SamplerConfig()
@@ -124,7 +191,6 @@ def run_server(host, port, model_provider, normal = False):
         def create_handler(*args, **kwargs):
             kwargs['sampler_config'] = sampler_config
             return EntropixAPIHandler(model_provider, *args, **kwargs)
-
         handler_class = create_handler
     httpd = HTTPServer(server_address, handler_class)
     print(f"Starting server on {host}:{port}")
