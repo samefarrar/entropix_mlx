@@ -1,25 +1,28 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import ReactMarkdown from 'react-markdown';
-import rehypeRaw from 'rehype-raw';
-import rehypeSanitize from 'rehype-sanitize';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneLight, oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import 'katex/dist/katex.min.css';
-import { useTheme } from 'next-themes';
+import React, { useState, useEffect, useMemo } from "react";
+import ReactMarkdown from "react-markdown";
+import rehypeRaw from "rehype-raw";
+import rehypeSanitize from "rehype-sanitize";
+import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import { PrismLight as SyntaxHighlighter } from "react-syntax-highlighter";
+import {
+  oneLight,
+  oneDark,
+} from "react-syntax-highlighter/dist/esm/styles/prism";
+import "katex/dist/katex.min.css";
+import { useTheme } from "next-themes";
 
 // Import only the languages you need
-import js from 'react-syntax-highlighter/dist/esm/languages/prism/javascript';
-import typescript from 'react-syntax-highlighter/dist/esm/languages/prism/typescript';
-import python from 'react-syntax-highlighter/dist/esm/languages/prism/python';
-import ruby from 'react-syntax-highlighter/dist/esm/languages/prism/ruby';
+import js from "react-syntax-highlighter/dist/esm/languages/prism/javascript";
+import typescript from "react-syntax-highlighter/dist/esm/languages/prism/typescript";
+import python from "react-syntax-highlighter/dist/esm/languages/prism/python";
+import ruby from "react-syntax-highlighter/dist/esm/languages/prism/ruby";
 
-SyntaxHighlighter.registerLanguage('javascript', js);
-SyntaxHighlighter.registerLanguage('typescript', typescript);
-SyntaxHighlighter.registerLanguage('python', python);
-SyntaxHighlighter.registerLanguage('ruby', ruby);
+SyntaxHighlighter.registerLanguage("javascript", js);
+SyntaxHighlighter.registerLanguage("typescript", typescript);
+SyntaxHighlighter.registerLanguage("python", python);
+SyntaxHighlighter.registerLanguage("ruby", ruby);
 
 interface MessageContentProps {
   content: string;
@@ -31,7 +34,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
   const [state, setState] = useState({
     thinking: true,
     parsed: {},
-    error: false
+    error: false,
   });
 
   useEffect(() => {
@@ -40,13 +43,19 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
       return;
     }
 
-    const timer = setTimeout(() => setState(s => ({ ...s, thinking: false, error: true })), 30000);
+    const timer = setTimeout(
+      () => setState((s) => ({ ...s, thinking: false, error: true })),
+      30000,
+    );
 
     try {
       const result = JSON.parse(content);
-      console.log("🔍 Parsed Result:", result);
 
-      if (result.response && result.response.length > 0 && result.response !== "...") {
+      if (
+        result.response &&
+        result.response.length > 0 &&
+        result.response !== "..."
+      ) {
         setState({ thinking: false, parsed: result, error: false });
         clearTimeout(timer);
       }
@@ -65,10 +74,13 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
     return content;
   }, [state.parsed.response, content]);
 
-  const syntaxTheme = theme === 'dark' ? oneDark : oneLight;
+  const syntaxTheme = theme === "dark" ? oneDark : oneLight;
 
   // Update this line to determine text color based on theme and role
-  const textColor = (theme === 'dark') !== (role === 'user') ? 'rgb(255, 255, 255)' : 'rgb(0, 0, 0)';
+  const textColor =
+    (theme === "dark") !== (role === "user")
+      ? "rgb(255, 255, 255)"
+      : "rgb(0, 0, 0)";
 
   if (state.thinking && role === "assistant") {
     return (
@@ -81,17 +93,24 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
   }
 
   if (state.error && !state.parsed.response) {
-    return <div className="text-destructive">Something went wrong. Please try again.</div>;
+    return (
+      <div className="text-destructive">
+        Something went wrong. Please try again.
+      </div>
+    );
   }
 
   return (
-    <div className="prose dark:prose-invert max-w-none" style={{ color: textColor }}>
+    <div
+      className="prose dark:prose-invert max-w-none"
+      style={{ color: textColor }}
+    >
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeRaw, rehypeSanitize, rehypeKatex]}
         components={{
           code({ node, inline, className, children, ...props }) {
-            const match = /language-(\w+)/.exec(className || '');
+            const match = /language-(\w+)/.exec(className || "");
             return !inline && match ? (
               <SyntaxHighlighter
                 style={syntaxTheme}
@@ -102,10 +121,14 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
                 wrapLines={true}
                 {...props}
               >
-                {String(children).replace(/\n$/, '')}
+                {String(children).replace(/\n$/, "")}
               </SyntaxHighlighter>
             ) : (
-              <code className="px-1 py-0.5 rounded-sm bg-muted" style={{ color: textColor }} {...props}>
+              <code
+                className="px-1 py-0.5 rounded-sm bg-muted"
+                style={{ color: textColor }}
+                {...props}
+              >
                 {children}
               </code>
             );
@@ -122,15 +145,28 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
           table({ node, ...props }) {
             return (
               <div className="overflow-x-auto my-4">
-                <table className="min-w-full divide-y divide-border border border-border" {...props} />
+                <table
+                  className="min-w-full divide-y divide-border border border-border"
+                  {...props}
+                />
               </div>
             );
           },
           th({ node, ...props }) {
-            return <th className="px-3 py-2 bg-muted text-left text-xs font-medium text-muted-foreground uppercase tracking-wider" {...props} />;
+            return (
+              <th
+                className="px-3 py-2 bg-muted text-left text-xs font-medium text-muted-foreground uppercase tracking-wider"
+                {...props}
+              />
+            );
           },
           td({ node, ...props }) {
-            return <td className="px-3 py-2 whitespace-nowrap text-sm text-muted-foreground border-t border-border" {...props} />;
+            return (
+              <td
+                className="px-3 py-2 whitespace-nowrap text-sm text-muted-foreground border-t border-border"
+                {...props}
+              />
+            );
           },
           blockquote({ node, ...props }) {
             return (
@@ -151,38 +187,89 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
             );
           },
           h1({ node, ...props }) {
-            return <h1 style={{ color: textColor }} className="text-2xl font-bold mt-6 mb-4" {...props} />;
+            return (
+              <h1
+                style={{ color: textColor }}
+                className="text-2xl font-bold mt-6 mb-4"
+                {...props}
+              />
+            );
           },
           h2({ node, ...props }) {
-            return <h2 style={{ color: textColor }} className="text-xl font-semibold mt-5 mb-3" {...props} />;
+            return (
+              <h2
+                style={{ color: textColor }}
+                className="text-xl font-semibold mt-5 mb-3"
+                {...props}
+              />
+            );
           },
           h3({ node, ...props }) {
-            return <h3 style={{ color: textColor }} className="text-lg font-medium mt-4 mb-2" {...props} />;
+            return (
+              <h3
+                style={{ color: textColor }}
+                className="text-lg font-medium mt-4 mb-2"
+                {...props}
+              />
+            );
           },
           h4({ node, ...props }) {
-            return <h4 style={{ color: textColor }} className="text-base font-medium mt-3 mb-2" {...props} />;
+            return (
+              <h4
+                style={{ color: textColor }}
+                className="text-base font-medium mt-3 mb-2"
+                {...props}
+              />
+            );
           },
           h5({ node, ...props }) {
-            return <h5 style={{ color: textColor }} className="text-sm font-medium mt-3 mb-1" {...props} />;
+            return (
+              <h5
+                style={{ color: textColor }}
+                className="text-sm font-medium mt-3 mb-1"
+                {...props}
+              />
+            );
           },
           h6({ node, ...props }) {
-            return <h6 style={{ color: textColor }} className="text-sm font-medium mt-3 mb-1" {...props} />;
+            return (
+              <h6
+                style={{ color: textColor }}
+                className="text-sm font-medium mt-3 mb-1"
+                {...props}
+              />
+            );
           },
           p({ node, ...props }) {
-            return <p style={{ color: textColor }} className="my-3 leading-relaxed" {...props} />;
+            return (
+              <p
+                style={{ color: textColor }}
+                className="my-3 leading-relaxed"
+                {...props}
+              />
+            );
           },
           ul({ node, ...props }) {
-            return <ul className="list-disc list-inside my-3 pl-4" {...props} />;
+            return (
+              <ul className="list-disc list-inside my-3 pl-4" {...props} />
+            );
           },
           ol({ node, ...props }) {
-            return <ol className="list-decimal list-inside my-3 pl-4" {...props} />;
+            return (
+              <ol className="list-decimal list-inside my-3 pl-4" {...props} />
+            );
           },
           li({ node, ...props }) {
             return <li className="my-1" {...props} />;
           },
           hr({ node, ...props }) {
-            return <hr className="my-6 border-gray-200 dark:border-gray-700" {...props} />;
-          }
+            return (
+              <hr
+                className="my-6 border-gray-200 dark:border-gray-700"
+                {...props}
+              />
+            );
+          },
         }}
       >
         {memoizedContent}
