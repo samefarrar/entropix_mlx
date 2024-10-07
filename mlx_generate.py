@@ -22,7 +22,7 @@ def generate_step(
     max_kv_size: Optional[int] = None,
     cache_history: Optional[List[Tuple[mx.array, mx.array]]] = None,
     sampler_config: SamplerConfig = SamplerConfig(),
-) -> Generator[Tuple[mx.array, mx.array], None, None]:
+) -> Generator[mx.array, None, None]:
     """
     A generator producing token ids based on the given prompt from the model.
 
