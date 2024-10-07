@@ -105,7 +105,7 @@ class SamplerConfig(BaseModel):
     hehv_attn_vent_coef: float = 0.5
 
     # TODO not convinced this should
-    n_adaptive_samples: int = 1
+    n_adaptive_samples: int = 5
 
     # Adaptive sampling parameters
     ada_temp_logits: float = 0.3
