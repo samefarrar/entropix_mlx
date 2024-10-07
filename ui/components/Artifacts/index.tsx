@@ -1,17 +1,17 @@
-'use client';
+"use client";
 
-import React, { useState, useEffect } from 'react'
-import { useTheme } from 'next-themes'
-import ArtifactTabs from './Tabs'
-import ArtifactContent from './Content'
-import ArtifactActions from './Actions'
-import ArtifactSidebar from './Sidebar'
-import Code from './Code'
-import TextPreview from './TextPreview'
+import React, { useState, useEffect } from "react";
+import { useTheme } from "next-themes";
+import ArtifactTabs from "./Tabs";
+import ArtifactContent from "./Content";
+import ArtifactActions from "./Actions";
+import ArtifactSidebar from "./Sidebar";
+import Code from "./Code";
+import TextPreview from "./TextPreview";
 
 interface ArtifactContent {
   id: string;
-  type: 'code' | 'html' | 'text' | 'log';
+  type: "code" | "html" | "text" | "log";
   content: string;
   language?: string;
   name: string;
@@ -27,20 +27,20 @@ interface ArtifactsProps {
 
 const mockArtifacts: ArtifactContent[] = [
   {
-    id: 'python1',
-    type: 'code',
+    id: "python1",
+    type: "code",
     content: `
 def greet(name):
     return f"Hello, {name}!"
 
 print(greet("World"))
     `,
-    language: 'python',
-    name: 'Python Greeting'
+    language: "python",
+    name: "Python Greeting",
   },
   {
-    id: 'tsx1',
-    type: 'code',
+    id: "tsx1",
+    type: "code",
     content: `
 import React from 'react';
 
@@ -56,9 +56,9 @@ export default function App() {
   return <Greeting name="World" />;
 }
     `,
-    language: 'tsx',
-    name: 'TSX Greeting'
-  }
+    language: "tsx",
+    name: "TSX Greeting",
+  },
 ];
 
 export default function Artifacts({
@@ -68,41 +68,47 @@ export default function Artifacts({
   onDelete,
   selectedArtifact,
 }: ArtifactsProps) {
-  const [activeArtifact, setActiveArtifact] = useState<string | null>(selectedArtifact?.id || artifacts[0]?.id || null);
+  const [activeArtifact, setActiveArtifact] = useState<string | null>(
+    selectedArtifact?.id || artifacts[0]?.id || null,
+  );
   const [showPreview, setShowPreview] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
-  const [logEntries, setLogEntries] = useState<{[key: string]: OutputEntry[]}>({});
+  const [logEntries, setLogEntries] = useState<{
+    [key: string]: OutputEntry[];
+  }>({});
   const [copied, setCopied] = useState(false);
   const { resolvedTheme } = useTheme();
 
-  const activeArtifactData = artifacts.find(a => a.id === activeArtifact);
+  const activeArtifactData = artifacts.find((a) => a.id === activeArtifact);
 
   const isPreviewable = (artifact: ArtifactContent | undefined) =>
-    artifact && ['html', 'javascript', 'typescript', 'tsx'].includes(artifact.language?.toLowerCase() || '');
+    artifact &&
+    ["html", "javascript", "typescript", "tsx"].includes(
+      artifact.language?.toLowerCase() || "",
+    );
 
   const copyToClipboard = () => {
     if (activeArtifactData) {
-      navigator.clipboard.writeText(activeArtifactData.content)
-        .then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        });
+      navigator.clipboard.writeText(activeArtifactData.content).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
     }
   };
 
   const runCode = () => {
-    if (activeArtifactData?.type === 'code') {
+    if (activeArtifactData?.type === "code") {
       onRun(activeArtifactData.id, activeArtifactData.content);
-      setLogEntries(prev => ({
+      setLogEntries((prev) => ({
         ...prev,
         [activeArtifactData.id]: [
           ...(prev[activeArtifactData.id] || []),
           {
             timestamp: new Date().toISOString(),
             content: `Running ${activeArtifactData.name}...`,
-            type: 'info'
-          }
-        ]
+            type: "info",
+          },
+        ],
       }));
       setShowLogs(true);
     }
@@ -110,17 +116,17 @@ export default function Artifacts({
 
   const renderArtifact = (artifact: ArtifactContent) => {
     switch (artifact.type) {
-      case 'code':
+      case "code":
         return (
           <Code
             key={artifact.id}
             initialContent={artifact.content}
-            language={artifact.language || 'javascript'}
+            language={artifact.language || "javascript"}
             onChange={(value) => onChange(artifact.id, value)}
             onRun={runCode}
           />
         );
-      case 'text':
+      case "text":
         return <TextPreview key={artifact.id} content={artifact.content} />;
       default:
         return null;
@@ -165,7 +171,9 @@ export default function Artifacts({
         copied={copied}
         setCopied={setCopied}
         copyToClipboard={copyToClipboard}
-        resetContent={() => {/* Implement reset functionality */}}
+        resetContent={() => {
+          /* Implement reset functionality */
+        }}
         runCode={runCode}
         onDelete={onDelete}
         activeArtifact={activeArtifact}
