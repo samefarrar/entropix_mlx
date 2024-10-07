@@ -8,6 +8,7 @@ from typing import Union, Optional, Callable, Generator, List, Tuple, Dict
 from mlx_lm.sample_utils import top_p_sampling, min_p_sampling, categorical_sampling
 import time
 from mlx_sampler import sample
+from mlx_sampler import SamplerConfig
 
 LN_2 = 0.69314718056  # ln(2)
 
@@ -20,7 +21,7 @@ def generate_step(
     prefill_step_size: int = 512,
     max_kv_size: Optional[int] = None,
     cache_history: Optional[List[Tuple[mx.array, mx.array]]] = None,
-    model_with_scores: bool = True,
+    sampler_config: SamplerConfig = SamplerConfig(),
 ) -> Generator[Tuple[mx.array, mx.array], None, None]:
     """
     A generator producing token ids based on the given prompt from the model.
@@ -66,19 +67,11 @@ def generate_step(
             c.update_and_fetch(h[0], h[1])
         mx.eval([c.state for c in cache])
 
-    if model_with_scores:
-        def _step(y):
-            logits, scores, attention_stats = model(y[None], cache=cache)
-            #logits = logits[:, -1, :]
-            y = sample(y, logits, scores, temp, top_p, top_k)
-            return y
-    else:
-        def _step(y):
-            logits = model(y[None], cache=cache)
-            logits = logits[:, -1, :]
-
-            y = sample(y, logits, temp, top_p, top_k)
-            return y
+    def _step(y):
+        logits, scores, attention_stats = model(y[None], cache=cache)
+        #logits = logits[:, -1, :]
+        y = sample(y, logits, scores, cfg = sampler_config)
+        return y
 
     while y.size > prefill_step_size:
         model(y[:prefill_step_size][None], cache=cache)
@@ -101,7 +94,6 @@ def generate(
     max_tokens: int = 100,
     verbose: bool = False,
     formatter: Optional[Callable] = None,
-    model_with_scores: bool = True,
     **kwargs,
 ) -> Union[str, Generator[str, None, None]]:
     """
@@ -132,8 +124,10 @@ def generate(
     tic = time.perf_counter()
     detokenizer.reset()
 
+    sampler_config = SamplerConfig()
+
     for (token), n in zip(
-        generate_step(prompt_tokens, model, model_with_scores=model_with_scores, **kwargs),
+        generate_step(prompt_tokens, model, sampler_config = sampler_config, **kwargs),
         range(max_tokens),
     ):
         if n == 0:

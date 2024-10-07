@@ -3,10 +3,11 @@ import time
 import mlx.core as mx
 import pathlib
 from typing import Optional, List, Tuple, Union
-from mlx_generate import generate
 from mlx_model import load_entropix_model
-from mlx_lm import load
-from mlx_lm import generate as generate_lm
+from mlx_lm.utils import load
+from mlx_lm.utils import generate as generate_mlx_lm
+from mlx_generate import generate
+from mlx_sampler import SamplerConfig
 import inspect
 from pathlib import Path
 
@@ -94,6 +95,12 @@ def main():
     if args.normal:
         model, tokenizer = load("weights/Llama-3.2-1B-Instruct")
         model_with_scores = False
+        sample_config_kwargs = SamplerConfig()
+        sample_config_kwargs = {
+            "temp": sample_config_kwargs.temp,
+            "top_p": sample_config_kwargs.top_p,
+            "min_p": sample_config_kwargs.min_p,
+        }
     else:
         path = Path("weights/Llama-3.2-1B-Instruct")
         _, tokenizer = load("weights/Llama-3.2-1B-Instruct")
@@ -101,22 +108,26 @@ def main():
         model_with_scores = True
     max_tokens = 4096
 
-    print("Generating text using Entropy based sampling...")
-
     if args.input:
         input = thinking_prompt.format(args.input)
         messages = [{"role": "user", "content": input}]
         prompt = tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=False
         )
-        response = generate(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens, model_with_scores=model_with_scores)
+        if args.normal:
+            response = generate_mlx_lm(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens, **sample_config_kwargs)
+        else:
+            response = generate(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens)
     else:
         for prompt in prompts:
             messages = [{"role": "user", "content": prompt}]
             prompt = tokenizer.apply_chat_template(
                 messages, tokenize=False, add_generation_prompt=False
             )
-            response = generate(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens, model_with_scores=model_with_scores)
+            if args.normal:
+                response = generate_mlx_lm(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens, **sample_config_kwargs)
+            else:
+                response = generate(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens)
 
 if __name__ == "__main__":
     main()
