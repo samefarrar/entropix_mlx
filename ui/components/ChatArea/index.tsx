@@ -12,25 +12,7 @@ import EditModal from "./EditModal";
 import ArtifactSidebar from "../Artifacts/Sidebar";
 import { motion, AnimatePresence } from "framer-motion";
 import { sendMessage } from "@/library/api";
-
-interface Message {
-  id: string;
-  role: string;
-  content: string;
-}
-
-type Model = {
-  id: string;
-  name: string;
-};
-
-interface ArtifactContent {
-  id: string;
-  type: "code" | "html" | "text" | "log";
-  content: string;
-  language?: string;
-  name: string;
-}
+import { Message, Model, ArtifactContent } from "@/types/chat";
 
 function ChatArea() {
   const [messages, setMessages] = useState<Message[]>([]);

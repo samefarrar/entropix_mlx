@@ -12,6 +12,7 @@ import {
 } from "react-syntax-highlighter/dist/esm/styles/prism";
 import "katex/dist/katex.min.css";
 import { useTheme } from "next-themes";
+import { MessageContentState, ParsedResponse } from '@/types/chat';
 
 // Import only the languages you need
 import js from "react-syntax-highlighter/dist/esm/languages/prism/javascript";
@@ -31,15 +32,15 @@ interface MessageContentProps {
 
 const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
   const { theme } = useTheme();
-  const [state, setState] = useState({
+  const [state, setState] = useState<MessageContentState>({
     thinking: true,
-    parsed: {},
-    error: false,
+    parsed: { response: '' },
+    error: false
   });
 
   useEffect(() => {
     if (role !== "assistant" || !content) {
-      setState({ thinking: false, parsed: {}, error: false });
+      setState({ thinking: false, parsed: { response: '' }, error: false });
       return;
     }
 
@@ -49,7 +50,8 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
     );
 
     try {
-      const result = JSON.parse(content);
+      const result = JSON.parse(content) as ParsedResponse;
+      console.log("🔍 Parsed Result:", result);
 
       if (
         result.response &&
@@ -61,7 +63,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
       }
     } catch (error) {
       console.error("Error parsing JSON:", error);
-      setState({ thinking: false, parsed: {}, error: true });
+      setState({ thinking: false, parsed: { response: '' }, error: true });
     }
 
     return () => clearTimeout(timer);
