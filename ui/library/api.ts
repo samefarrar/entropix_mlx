@@ -1,12 +1,13 @@
 // @/library/api.ts
-
+import { Message } from "@/types/chat";
 const API_URL = "http://localhost:8000"; // Update this with your server's URL
 
 export async function sendMessage(
-  message: string,
+  messages: Message[],
   modelId: string,
   onUpdate?: (update: string) => void,
 ) {
+
   const response = await fetch(`${API_URL}/v1/chat/completions`, {
     method: "POST",
     headers: {
@@ -14,7 +15,10 @@ export async function sendMessage(
     },
     body: JSON.stringify({
       model: modelId,
-      messages: [{ role: "user", content: message }],
+      messages: messages.map((msg) => ({
+        role: msg.role,
+        content: msg.role === "assistant" ? JSON.parse(msg.content).response : msg.content,
+      })),
       stream: !!onUpdate,
     }),
   });
@@ -59,7 +63,8 @@ export async function sendMessage(
     });
   } else {
     // Non-streaming case
-    const api_response = await response.json();
+    const api_response = response;
+    console.log("api_response", api_response);
     return new Promise<string>((resolve) => {
       setTimeout(() => {
         resolve(
