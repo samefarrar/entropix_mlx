@@ -65,9 +65,9 @@ def generate_step(
         mx.eval([c.state for c in cache])
 
     def _step(y):
-        logits, scores, attention_stats = model(y[None], cache=cache)
+        logits, scores, attention_stats = model(y, cache=cache)
         #logits = logits[:, -1, :]
-        y = sample(y, logits, scores, cfg = sampler_config)
+        y = sample(y, logits, scores, cfg = sampler_config) # Convert returned (bsz, 1) to (bsz, )
         return y
 
     while y.size > prefill_step_size:
@@ -75,7 +75,7 @@ def generate_step(
         mx.eval([c.state for c in cache])
         y = y[prefill_step_size:]
 
-    y = _step(y)
+    y = _step(y[None])
 
     mx.async_eval(y)
     while True:
