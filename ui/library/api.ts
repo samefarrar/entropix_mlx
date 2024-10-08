@@ -73,7 +73,8 @@ export async function sendMessage(
     return fullResponse; // Return the full response string directly
   } else {
     // Non-streaming case
-    const api_response = await response.json();
+    const api_response = response;
+    console.log("api_response", api_response);
     return new Promise<string>((resolve) => {
       setTimeout(() => {
         resolve(
