@@ -5,6 +5,7 @@ import { X, SlidersHorizontal, Code, Image, Zap } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTheme } from "next-themes";
 import { Toggle } from "@/components/ui/toggle";
+import SystemPromptSelector from "@/components/Artifacts/SystemPromptSelector";
 
 interface ArtifactContent {
   id: string;
@@ -19,6 +20,8 @@ interface ArtifactSidebarProps {
   artifacts: ArtifactContent[];
   isStreamingEnabled: boolean;
   setIsStreamingEnabled: (isEnabled: boolean) => void;
+  systemPrompt: string;
+  onSystemPromptChange: (prompt: string) => void;
 }
 
 export default function ArtifactSidebar({
@@ -27,6 +30,8 @@ export default function ArtifactSidebar({
   artifacts,
   isStreamingEnabled,
   setIsStreamingEnabled,
+  systemPrompt,
+  onSystemPromptChange,
 }: ArtifactSidebarProps) {
   const { theme } = useTheme();
   const toggleSidebar = () => setIsOpen(!isOpen);
@@ -55,6 +60,8 @@ export default function ArtifactSidebar({
               artifacts={artifacts}
               isStreamingEnabled={isStreamingEnabled}
               setIsStreamingEnabled={setIsStreamingEnabled}
+              systemPrompt={systemPrompt}
+              onSystemPromptChange={onSystemPromptChange}
             />
           </motion.div>
         )}
@@ -83,6 +90,8 @@ const SidebarContent = ({
   artifacts,
   isStreamingEnabled,
   setIsStreamingEnabled,
+  systemPrompt,
+  onSystemPromptChange,
 }) => (
   <div className="p-4">
     <SidebarHeader onClose={onClose} />
@@ -93,6 +102,12 @@ const SidebarContent = ({
     />
     <ArtifactsList artifacts={artifacts} />
     <ContentSection />
+    <div className="mb-4">
+      <SystemPromptSelector
+        systemPrompt={systemPrompt}
+        onSystemPromptChange={onSystemPromptChange}
+      />
+    </div>
   </div>
 );
 

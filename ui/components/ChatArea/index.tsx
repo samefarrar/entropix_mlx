@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { X, Code, SlidersHorizontal } from "lucide-react";
+import { X, Code } from "lucide-react";
 import MessageList from "./MessageList";
 import ChatInput from "./ChatInput";
 import WelcomeMessage from "./WelcomeMessage";
@@ -24,6 +24,7 @@ function ChatArea() {
   const [isStreamingEnabled, setIsStreamingEnabled] = useState(false);
   const [showArtifacts, setShowArtifacts] = useState(false);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const [systemPrompt, setSystemPrompt] = useState("");
   const [artifacts, setArtifacts] = useState<ArtifactContent[]>([
     {
       id: "1",
@@ -41,12 +42,7 @@ function ChatArea() {
     { id: "/sax/test/pdex_llama3_70b", name: "Atlas" },
   ];
 
-  const [assistantMessage, setAssistantMessage] = useState<Message | null>(
-    null,
-  );
-
   const [showArtifactSidebar, setShowArtifactSidebar] = useState(false);
-
   useEffect(() => {
     if (messages.length > 0) {
       setTimeout(() => {
@@ -57,6 +53,10 @@ function ChatArea() {
       }, 100);
     }
   }, [messages]);
+
+  const handleSystemPromptChange = (newPrompt: string) => {
+    setSystemPrompt(newPrompt);
+  };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -75,7 +75,7 @@ function ChatArea() {
     setInput("");
 
     try {
-      let assistantMessage: Message = {
+      const assistantMessage: Message = {
         id: crypto.randomUUID(),
         role: "assistant",
         content: "",
@@ -84,25 +84,34 @@ function ChatArea() {
       if (isStreamingEnabled) {
         // Streaming logic
         setMessages([...updatedMessages, assistantMessage]);
-        await sendMessage(updatedMessages, selectedModel, (update) => {
-          setMessages((prevMessages) =>
-            prevMessages.map((msg) =>
-              msg.id === assistantMessage.id
-                ? {
-                    ...msg,
-                    content: JSON.stringify({
-                      response: update,
-                      thinking: "Thinking process...",
-                      user_mood: "neutral",
-                    }),
-                  }
-                : msg,
-            ),
-          );
-        });
+        await sendMessage(
+          updatedMessages,
+          systemPrompt,
+          selectedModel,
+          (update) => {
+            setMessages((prevMessages) =>
+              prevMessages.map((msg) =>
+                msg.id === assistantMessage.id
+                  ? {
+                      ...msg,
+                      content: JSON.stringify({
+                        response: update,
+                        thinking: "Thinking process...",
+                        user_mood: "neutral",
+                      }),
+                    }
+                  : msg,
+              ),
+            );
+          },
+        );
       } else {
         // Non-streaming logic
-        const response = await sendMessage(updatedMessages, selectedModel);
+        const response = await sendMessage(
+          updatedMessages,
+          systemPrompt,
+          selectedModel,
+        );
         assistantMessage.content = response;
         setMessages([...updatedMessages, assistantMessage]);
       }
@@ -222,6 +231,7 @@ function ChatArea() {
               onChange={handleArtifactChange}
               onRun={handleRunCode}
               onDelete={handleDeleteArtifact}
+              selectedArtifact={artifacts[0]}
             />
           </motion.div>
         )}
@@ -254,9 +264,11 @@ function ChatArea() {
         setIsOpen={setShowArtifactSidebar}
         isStreamingEnabled={isStreamingEnabled}
         setIsStreamingEnabled={setIsStreamingEnabled}
+        systemPrompt={systemPrompt}
+        onSystemPromptChange={handleSystemPromptChange}
         artifacts={artifacts.map((a) => ({
           id: a.id,
-          type: a.type === "image" ? "image" : "code",
+          type: a.type,
           name: a.name,
           versions: 1,
         }))}

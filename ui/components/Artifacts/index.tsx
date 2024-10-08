@@ -16,13 +16,12 @@ interface ArtifactContent {
   language?: string;
   name: string;
 }
-
 interface ArtifactsProps {
   artifacts: ArtifactContent[];
+  selectedArtifact: ArtifactContent | null;
   onChange: (id: string, value: string) => void;
   onRun: (id: string, code: string) => void;
   onDelete: (id: string) => void;
-  selectedArtifact: ArtifactContent | null;
 }
 
 const mockArtifacts: ArtifactContent[] = [
