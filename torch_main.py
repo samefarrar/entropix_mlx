@@ -64,7 +64,7 @@ def apply_scaling(freqs: torch.Tensor) -> torch.Tensor:
         return scaled
 
     scaled_freqs = torch.vmap(scale_freq)(freqs)
-    
+
     return scaled_freqs
 
 def precompute_freqs_cis(dim: int, end: int, theta: float = 500000.0, use_scaled: bool = False, dtype: torch.dtype = torch.float32) -> torch.Tensor:
