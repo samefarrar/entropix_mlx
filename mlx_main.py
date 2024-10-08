@@ -50,7 +50,7 @@ def main():
             {"role": "user", "content": args.input}
         ]
         prompt = tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
+            messages, tokenize=False, add_generation_prompt=False
         )
         if args.normal:
             response = generate_mlx_lm(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens, **sample_config_kwargs)
