@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbo",
+    "dev": "concurrently \"next dev --turbo\" \"cd .. && uv run mlx_server.py\"",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
@@ -16,6 +16,7 @@
     "@radix-ui/react-dropdown-menu": "^2.1.1",
     "@radix-ui/react-label": "^2.1.0",
     "@radix-ui/react-scroll-area": "^1.1.0",
+    "@radix-ui/react-select": "^2.1.2",
     "@radix-ui/react-separator": "^1.1.0",
     "@radix-ui/react-slider": "^1.2.0",
     "@radix-ui/react-slot": "^1.1.0",
@@ -42,6 +43,7 @@
     "rehype-katex": "^7.0.1",
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
+    "remark-breaks": "^4.0.0",
     "remark-directive": "^3.0.0",
     "remark-gfm": "^4.0.0",
     "remark-math": "^6.0.0",
@@ -55,6 +57,7 @@
     "@types/react": "^18.3.7",
     "@types/react-dom": "^18.3.0",
     "@types/react-syntax-highlighter": "^15.5.13",
+    "concurrently": "^9.0.1",
     "eslint": "^8.57.1",
     "eslint-config-next": "14.2.11",
     "postcss": "^8.4.47",
