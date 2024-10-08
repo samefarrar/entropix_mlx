@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Send, ChevronDown } from "lucide-react";
@@ -9,8 +9,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { debounce } from 'lodash';
-
+import { debounce } from "lodash";
 interface ChatInputProps {
   input: string;
   setInput: (value: string) => void;
@@ -35,14 +34,14 @@ const ChatInput: React.FC<ChatInputProps> = ({
 
   const setTextareaRef = useCallback((textarea: HTMLTextAreaElement | null) => {
     if (textarea) {
-      textarea.style.height = '56px';
+      textarea.style.height = "56px";
       textareaRef.current = textarea;
     }
   }, []);
 
   const adjustTextareaHeight = useCallback(() => {
     if (textareaRef.current) {
-      textareaRef.current.style.height = '56px';
+      textareaRef.current.style.height = "56px";
       const scrollHeight = textareaRef.current.scrollHeight;
       textareaRef.current.style.height = `${Math.min(scrollHeight, 300)}px`;
     }
@@ -52,36 +51,48 @@ const ChatInput: React.FC<ChatInputProps> = ({
     adjustTextareaHeight();
   }, [input, adjustTextareaHeight]);
 
-  const handleSubmit = useCallback((e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (input.trim()) {
-      onSubmit(e);
-      if (textareaRef.current) {
-        textareaRef.current.style.height = '56px'; // Reset textarea height after submission
-      }
-    }
-  }, [input, onSubmit]);
-
-  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+  const handleSubmit = useCallback(
+    (e: React.FormEvent<HTMLFormElement>) => {
       e.preventDefault();
-      handleSubmit(e as any);
-    }
-  }, [handleSubmit]);
+      if (input.trim()) {
+        onSubmit(e);
+        if (textareaRef.current) {
+          textareaRef.current.style.height = "56px"; // Reset textarea height after submission
+        }
+      }
+    },
+    [input, onSubmit],
+  );
 
-  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInput(e.target.value);
-    adjustTextareaHeight();
-  }, [setInput, adjustTextareaHeight]);
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSubmit(e as any);
+      }
+    },
+    [handleSubmit],
+  );
+
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      setInput(e.target.value);
+      adjustTextareaHeight();
+    },
+    [setInput, adjustTextareaHeight],
+  );
 
   const selectedModelName = models.find((m) => m.id === selectedModel)?.name;
 
   return (
-    <form onSubmit={handleSubmit} className={`
+    <form
+      onSubmit={handleSubmit}
+      className={`
       flex flex-col w-full relative bg-background border rounded-xl
       transition-all duration-200 ease-in-out
-      ${isFocused ? 'ring-2 ring-ring ring-offset-2' : 'shadow-sm'}
-    `}>
+      ${isFocused ? "ring-2 ring-ring ring-offset-2" : "shadow-sm"}
+    `}
+    >
       <Textarea
         ref={setTextareaRef}
         value={input}
@@ -94,7 +105,7 @@ const ChatInput: React.FC<ChatInputProps> = ({
         onBlur={() => {
           setIsFocused(false);
           if (textareaRef.current) {
-            textareaRef.current.style.height = '56px';
+            textareaRef.current.style.height = "56px";
           }
         }}
         placeholder="Type your message here..."
@@ -117,14 +128,21 @@ const ChatInput: React.FC<ChatInputProps> = ({
         <div className="flex items-center space-x-2">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="text-muted-foreground">
+              <Button
+                variant="outline"
+                size="sm"
+                className="text-muted-foreground"
+              >
                 {selectedModelName}
                 <ChevronDown className="ml-2 h-4 w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
               {models.map(({ id, name }) => (
-                <DropdownMenuItem key={id} onSelect={() => setSelectedModel(id)}>
+                <DropdownMenuItem
+                  key={id}
+                  onSelect={() => setSelectedModel(id)}
+                >
                   {name}
                 </DropdownMenuItem>
               ))}

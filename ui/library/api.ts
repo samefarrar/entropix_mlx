@@ -5,6 +5,7 @@ const MAX_TOKENS = 2048;
 
 export async function sendMessage(
   message: Message[] | Message,
+  systemPrompt: string,
   modelId: string,
   onUpdate?: (update: string) => void,
 ) {
@@ -12,7 +13,8 @@ export async function sendMessage(
   const messages = Array.isArray(message)
     ? message.map(({ role, content }) => ({ role, content }))
     : [{ role: "user", content: message }];
-  const processedMessages = messages.map((message) => {
+
+  let processedMessages = messages.map((message) => {
     if (message.role === "assistant" && message.content) {
       try {
         const parsedContent = JSON.parse(message.content);
@@ -24,6 +26,15 @@ export async function sendMessage(
     }
     return message;
   });
+
+  // Only add the system prompt if it's not empty
+  if (systemPrompt.trim() !== "") {
+    processedMessages = [
+      { role: "system", content: systemPrompt },
+      ...processedMessages,
+    ];
+  }
+
   console.log("Sending messages:", processedMessages);
   const response = await fetch(`${API_URL}/v1/chat/completions`, {
     method: "POST",

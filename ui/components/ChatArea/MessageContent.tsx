@@ -5,6 +5,7 @@ import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
+import remarkBreak from "remark-breaks";
 import { PrismLight as SyntaxHighlighter } from "react-syntax-highlighter";
 import {
   oneLight,
@@ -121,7 +122,7 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
       style={{ color: textColor }}
     >
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
+        remarkPlugins={[remarkGfm, remarkMath, remarkBreak]}
         rehypePlugins={[rehypeRaw, rehypeSanitize, rehypeKatex]}
         components={{
           code({ node, inline, className, children, ...props }) {
