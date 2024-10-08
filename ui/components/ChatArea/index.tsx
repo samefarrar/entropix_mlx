@@ -70,7 +70,8 @@ function ChatArea() {
       content: input,
     };
 
-    setMessages((prevMessages) => [...prevMessages, userMessage]);
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
     setInput("");
 
     try {
@@ -82,22 +83,28 @@ function ChatArea() {
 
       if (isStreamingEnabled) {
         // Streaming logic
-        setMessages((prevMessages) => [...prevMessages, assistantMessage]);
-
-        await sendMessage(input, selectedModel, (update) => {
+        setMessages([...updatedMessages, assistantMessage]);
+        await sendMessage(updatedMessages, selectedModel, (update) => {
           setMessages((prevMessages) =>
             prevMessages.map((msg) =>
               msg.id === assistantMessage.id
-                ? { ...msg, content: JSON.stringify({ response: update }) }
+                ? {
+                    ...msg,
+                    content: JSON.stringify({
+                      response: update,
+                      thinking: "Thinking process...",
+                      user_mood: "neutral",
+                    }),
+                  }
                 : msg,
             ),
           );
         });
       } else {
         // Non-streaming logic
-        const response = await sendMessage(input, selectedModel);
+        const response = await sendMessage(updatedMessages, selectedModel);
         assistantMessage.content = response;
-        setMessages((prevMessages) => [...prevMessages, assistantMessage]);
+        setMessages([...updatedMessages, assistantMessage]);
       }
 
       // Simulating artifact generation

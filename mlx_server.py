@@ -51,7 +51,6 @@ class EntropixAPIHandler(APIHandler):
     def __init__(self, model_provider: ModelProvider, *args, **kwargs):
         self.sampler_config = kwargs.pop('sampler_config', None)
         super().__init__(model_provider, *args, **kwargs)
-        self.max_tokens = 4096
 
     def handle_completion(self, prompt, stop_id_sequences: List[List[int]]):
         """
