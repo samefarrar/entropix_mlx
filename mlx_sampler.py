@@ -188,6 +188,7 @@ def sample(
             sample = _sample(logits, temperature=temperature, top_p=top_p, top_k=top_k, min_p=min_p)
             samples.append(sample)
 
+        @mx.compile
         def score_sample(sample):
             one_hot = mx.zeros((sample.size, logits.shape[-1]))
             one_hot[mx.arange(sample.size), sample] = 1
