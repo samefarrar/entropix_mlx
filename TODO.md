@@ -1,5 +1,10 @@
 #TODO
 
+## MLX
+  - Return token scores from the model and visualise them in the UI.
+  - Add system prompts to the UI with templates.
+
+
 ## Repo
  - Code and Docs cleanup (this is very hacky right now)
  - Concept explanation and simple impelmentation examples
