@@ -2,8 +2,10 @@
 import { Message } from "@/types/chat";
 const API_URL = "http://localhost:8000"; // Update this with your server's URL
 const MAX_TOKENS = 2048;
+const MAX_TOKENS = 2048;
 
 export async function sendMessage(
+  message: Message[] | Message,
   message: Message[] | Message,
   modelId: string,
   onUpdate?: (update: string) => void,
