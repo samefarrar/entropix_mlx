@@ -12,7 +12,7 @@ import {
 } from "react-syntax-highlighter/dist/esm/styles/prism";
 import "katex/dist/katex.min.css";
 import { useTheme } from "next-themes";
-import { MessageContentState, ParsedResponse } from '@/types/chat';
+import { MessageContentState, ParsedResponse } from "@/types/chat";
 
 // Import only the languages you need
 import js from "react-syntax-highlighter/dist/esm/languages/prism/javascript";
@@ -34,13 +34,13 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
   const { theme } = useTheme();
   const [state, setState] = useState<MessageContentState>({
     thinking: true,
-    parsed: { response: '' },
-    error: false
+    parsed: { response: "" },
+    error: false,
   });
 
   useEffect(() => {
     if (role !== "assistant" || !content) {
-      setState({ thinking: false, parsed: { response: '' }, error: false });
+      setState({ thinking: false, parsed: { response: "" }, error: false });
       return;
     }
 
@@ -50,30 +50,43 @@ const MessageContent: React.FC<MessageContentProps> = ({ content, role }) => {
     );
 
     try {
-      const result = JSON.parse(content) as ParsedResponse;
+      // First, try to parse the content as JSON
+      const result = JSON.parse(content);
       console.log("🔍 Parsed Result:", result);
 
-      if (
-        result.response &&
-        result.response.length > 0 &&
-        result.response !== "..."
-      ) {
-        setState({ thinking: false, parsed: result, error: false });
-        clearTimeout(timer);
+      if (result.response) {
+        // If it's JSON and has a response field, use that
+        console.log("Content is JSON and has a response field");
+        setState({
+          thinking: false,
+          parsed: { response: result.response },
+          error: false,
+        });
+      } else {
+        // If it's JSON but doesn't have a response field, use the whole object as the response
+        console.log("Content is JSON but doesn't have a response field");
+        setState({
+          thinking: false,
+          parsed: { response: JSON.stringify(result) },
+          error: false,
+        });
       }
     } catch (error) {
-      console.error("Error parsing JSON:", error);
-      setState({ thinking: false, parsed: { response: '' }, error: true });
+      // If it's not JSON, use the content as-is
+      console.log("Content is not JSON, using as plain text");
+      setState({
+        thinking: false,
+        parsed: { response: content },
+        error: false,
+      });
     }
 
+    clearTimeout(timer);
     return () => clearTimeout(timer);
   }, [content, role]);
 
   const memoizedContent = useMemo(() => {
-    if (state.parsed.response) {
-      return state.parsed.response;
-    }
-    return content;
+    return state.parsed.response || content;
   }, [state.parsed.response, content]);
 
   const syntaxTheme = theme === "dark" ? oneDark : oneLight;
