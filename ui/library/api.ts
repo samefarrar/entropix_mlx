@@ -1,11 +1,9 @@
 // @/library/api.ts
-import { Message } from "@/types/chat";
+import { Message } from "./types";
 const API_URL = "http://localhost:8000"; // Update this with your server's URL
-const MAX_TOKENS = 2048;
 const MAX_TOKENS = 2048;
 
 export async function sendMessage(
-  message: Message[] | Message,
   message: Message[] | Message,
   modelId: string,
   onUpdate?: (update: string) => void,
@@ -75,8 +73,7 @@ export async function sendMessage(
     return fullResponse; // Return the full response string directly
   } else {
     // Non-streaming case
-    const api_response = response;
-    console.log("api_response", api_response);
+    const api_response = await response.json();
     return new Promise<string>((resolve) => {
       setTimeout(() => {
         resolve(
