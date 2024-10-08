@@ -1,12 +1,30 @@
 // @/library/api.ts
-
+import { Message } from "./types";
 const API_URL = "http://localhost:8000"; // Update this with your server's URL
+const MAX_TOKENS = 2048;
 
 export async function sendMessage(
-  message: string,
+  message: Message[] | Message,
   modelId: string,
   onUpdate?: (update: string) => void,
 ) {
+  console.log("Pre-parsed messages: ", message);
+  const messages = Array.isArray(message)
+    ? message.map(({ role, content }) => ({ role, content }))
+    : [{ role: "user", content: message }];
+  const processedMessages = messages.map((message) => {
+    if (message.role === "assistant" && message.content) {
+      try {
+        const parsedContent = JSON.parse(message.content);
+        return { ...message, content: parsedContent.response };
+      } catch (error) {
+        console.error("Error parsing assistant message content:", error);
+        return message;
+      }
+    }
+    return message;
+  });
+  console.log("Sending messages:", processedMessages);
   const response = await fetch(`${API_URL}/v1/chat/completions`, {
     method: "POST",
     headers: {
@@ -14,7 +32,11 @@ export async function sendMessage(
     },
     body: JSON.stringify({
       model: modelId,
-      messages: [{ role: "user", content: message }],
+      messages: processedMessages.map(({ role, content }) => ({
+        role,
+        content,
+      })),
+      max_tokens: MAX_TOKENS,
       stream: !!onUpdate,
     }),
   });
@@ -28,14 +50,11 @@ export async function sendMessage(
     const reader = response.body?.getReader();
     const decoder = new TextDecoder();
     let fullResponse = "";
-
     while (true) {
       const { done, value } = await reader?.read();
       if (done) break;
-
       const chunk = decoder.decode(value);
       const lines = chunk.split("\n");
-
       for (const line of lines) {
         if (line.startsWith("data: ")) {
           const data = line.slice(6);
@@ -51,12 +70,7 @@ export async function sendMessage(
         }
       }
     }
-
-    return JSON.stringify({
-      response: fullResponse,
-      thinking: "Thinking process...",
-      user_mood: "neutral",
-    });
+    return fullResponse; // Return the full response string directly
   } else {
     // Non-streaming case
     const api_response = await response.json();
