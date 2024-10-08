@@ -5,12 +5,9 @@ XJDR-ALT has some some really cool work on [entropy based sampling](https://gith
 
 Entropy Based Sampling and Parallel CoT Decoding
 
-The goal is to use entropy to make context aware sampling. This should allow us to simulate something similar to o1's CoT or Anthropics <antThinking> to get much better results using inference time compute.
+The goal is to use entropy to make context aware sampling. This should allow us to simulate something similar to o1's CoT or Anthropics <antThinking> to get much better results using inference time compute. This project is a research project and a work in process. Its comprised of an inference stack, the sampler, and a UI (future). Please reach out to me on X if you have any question or concerns @_xjdr (original idea and implementation), @samefarrar (MLX implementation).
 
-This project is a research project and a work in process. Its comprised of an inference stack, the sampler, and a UI (future). Please reach out to me on X if you have any question or concerns @_xjdr (original idea and implementation).
-@samefarrar (MLX implementation).
-
-HERE BE DRAGONS!!!! THIS IS NOT A FINISHED PRODUCT AND WILL BE UNSTABLE AS HELL RIGHT NOW
+THIS IS NOT A FINISHED PRODUCT AND WILL BE UNSTABLE AS HELL RIGHT NOW
 
 ![Entropy Quadrant](images/entropy_quadrants.png)
 
@@ -30,18 +27,15 @@ And in those moments of low entropy and low varentropy, when the path ahead seem
 Current supported models:
   llama3.1+
 
-Future supported models:
-  DeepSeekV2+
-  Mistral Large (123B)
-
 # TODOS:
-- Get UI working with MLX sampler
-- **Figure out a way to run adaptive sampling with more than 1 branch without going OOM.**
+- Clean up UI (make it look nicer)
+- Have mlx_generate pass stats for each token for visualisation on the server.
 
 # Getting Started
 [install uv](https://github.com/astral-sh/uv)
 
-install the required dependencies
+[install bun if you want to use the local server](https://bun.sh/docs/installation)
+
 ```bash
 uv sync
 ```
@@ -51,32 +45,36 @@ download weights (Instruct), you need to have **set up your huggingface cli for 
 uv run mlx_download_weights.py
 ```
 
+## If you want to run the command line prompter:
 ```bash
 uv run mlx_main.py
 ```
-
 ### Options
 - `--prompts`: Use predefined prompts from `mlx_entropix.prompts`
 - `--prompt_csv`: Use prompts from `data/prompts.csv`
 - `--input TEXT`: Provide a custom input prompt
 - `--entropix`: Use Entropix model for generation (default)
-- `--normal`: Use normal model for generation
+
+## If you want to run the server
+```bash
+cd ui
+bun run dev
+```
+This will call `uv run mlx_server.py` in the background, as well as the web server.
+
+`--normal`: Use normal model for generation (as opposed to the entropix model)
 
 ### Functionality
 1. **Model Loading**:
    - Loads either a standard language model or an Entropix model based on the specified options.
    - Uses the Llama-3.2-1B-Instruct model by default.
 
-2. **Input Processing**:
-   - Supports single custom input, predefined prompts, or prompts from a CSV file.
-   - Applies chat template to format prompts correctly.
-
-3. **Text Generation**:
+2. **Text Generation**:
    - Generates text using either the mlx_lm `generate_mlx_lm` function or the Entropix `generate` function.
    - Supports a maximum token limit of 4096.
 
-4. **Output**:
-   - Prints generated text to the console.
+3. **Command line or Server**
+   - Use the model with the command line or the server.
 
 ### Examples
 1. Use predefined prompts:
