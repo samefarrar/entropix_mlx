@@ -72,6 +72,8 @@ function ChatArea() {
 
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
     setInput("");
 
     try {
@@ -102,6 +104,7 @@ function ChatArea() {
         });
       } else {
         // Non-streaming logic
+        const response = await sendMessage(updatedMessages, selectedModel);
         const response = await sendMessage(updatedMessages, selectedModel);
         assistantMessage.content = response;
         setMessages([...updatedMessages, assistantMessage]);
