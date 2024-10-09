@@ -108,8 +108,8 @@ def sample(
     agreement, interaction_strength = metrics["agreement"], metrics["interaction_strength"]
 
     # Low Entropy, Low Varentropy: "flowing with unspoken intent"
-    # if ent < cfg.low_ent_thresh and vent < cfg.low_vent_thresh:
-    #     return mx.argmax(logits[:, -1], axis=-1, keepdims=True)
+    if ent < cfg.low_ent_thresh and vent < cfg.low_vent_thresh:
+        return mx.argmax(logits[:, -1], axis=-1, keepdims=True)
     # # High Entropy, Low Varentropy: "treading carefully, asking clarifying questions"
     # elif (ent > cfg.high_ent_thresh and
     #       vent < cfg.high_vent_thresh and
