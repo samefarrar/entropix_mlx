@@ -2,7 +2,6 @@ from mlx_lm.utils import make_kv_caches
 import mlx.core as mx
 import mlx.nn as nn
 from typing import Optional, List, Tuple, Union, Dict
-from mlx_attention_sampler import SamplerConfig
 
 LN_2 = 0.69314718056  # ln(2)
 
@@ -75,6 +74,54 @@ def _sample(logits: mx.array, temperature=0.666, top_p=0.9, top_k: int = 27, min
     token = mx.take_along_axis(sorted_indices, sorted_token, axis=-1) # e.g. [3,] in shape (batch_size,)
     return token
 
+from pydantic import BaseModel
+class SamplerConfig(BaseModel):
+    """
+    Encapsulation of all available sampler hyperparameters.
+
+    This should be a good starting point for baselining experiments.
+    """
+
+    temp: float = 0.666
+    top_p: float = 0.90
+    top_k: int = 27
+    min_p: float = 0.03  # Turn this down to 0.01 to reduce the shoggoth
+
+    low_ent_thresh: float = 0.1
+    low_vent_thresh: float = 0.1
+    med_ent_thresh: float = 3.0
+    high_ent_thresh: float = 5.0
+    high_vent_thresh: float = 5.0
+
+    # TODO this is a bit of a nasty mess, but also makes all the hyperparameters visible
+    helv_attn_ent_offset: float = 1.3
+    helv_attn_ent_coef: float = 0.2
+
+    lehv_interaction_strength_offset: float = 1.2
+    lehv_interaction_strength_coef: float = 0.3
+
+    hehv_attn_ent_coef: float = 0.2
+    hehv_attn_vent_offset: float = 2.0
+    hehv_attn_vent_coef: float = 0.5
+
+    # TODO not convinced this should
+    n_adaptive_samples: int = 5
+
+    # Adaptive sampling parameters
+    ada_temp_logits: float = 0.3
+    ada_temp_attn: float = 0.2
+    ada_temp_agree: float = 0.2
+    ada_top_p: float = 0.1
+    ada_top_k_int: float = 0.3
+    ada_top_k_agree: float = 0.2
+    ada_min_p: float = 0.5
+    ada_score_logits_ent: float = 0.1
+    ada_score_attn_ent: float = 0.2
+    ada_score_logits_vent: float = 0.3
+    ada_score_attn_vent: float = 0.4
+    ada_score_agree: float = 0.5
+    ada_score_int: float = 0.6
+
 @mx.compile
 def score_sample(sample, logits, metrics):
     batch_size, seq_length = sample.shape
@@ -110,29 +157,7 @@ def sample(
     # Low Entropy, Low Varentropy: "flowing with unspoken intent"
     if ent < cfg.low_ent_thresh and vent < cfg.low_vent_thresh:
         return mx.argmax(logits[:, -1], axis=-1, keepdims=True)
-    # # High Entropy, Low Varentropy: "treading carefully, asking clarifying questions"
-    # elif (ent > cfg.high_ent_thresh and
-    #       vent < cfg.high_vent_thresh and
-    #       attention_entropy < cfg.low_attention_entropy_threshold and
-    #       attention_varentropy < cfg.low_attention_varentropy_threshold and
-    #       agreement < cfg.low_agreement_threshold and
-    #       interaction_strength < cfg.low_interaction_strength_threshold):
-    #     # Insert a clarifying question token if not already present
-    #     if not mx.any(mx.equal(gen_tokens[:, -1], clarifying_question_token).any()):
-    #         return mx.array(
-    #             [[clarifying_question_token]]
-    #         ), color
-    #     else:
-    #         # If we've just asked a question, sample with slightly higher temperature
-    #         temp_adj = cfg.high_entropy_attention_offset + cfg.high_entropy_attention_coef * attn_ent
-    #         return sample(
-    #             logits,
-    #             temperature=min(1.5, cfg.temperature * temp_adj),
-    #             top_p=cfg.top_p,
-    #             top_k=cfg.top_k,
-    #             min_p=cfg.min_probability,
-    #             key=key
-    #         ), color
+
     # High Entropy, Low Varentropy: "treading carefully, asking clarifying questions"
     elif ent > cfg.high_ent_thresh and vent < cfg.low_vent_thresh:
         #print("ε", flush = True, end = "")
