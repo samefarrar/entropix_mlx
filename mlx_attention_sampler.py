@@ -30,6 +30,7 @@ class SamplerConfig(BaseModel):
 
     # TODO not convinced this should
     n_adaptive_samples: int = 5
+    ada_noise_scale: float = 1 / 3
 
     # Adaptive sampling parameters
     ada_temp_logits: float = 0.3
