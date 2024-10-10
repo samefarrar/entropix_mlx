@@ -39,7 +39,6 @@ def calculate_metrics(logits: mx.array, attention_scores: mx.array) -> Dict[str,
     }
 
 def _sample(logits: mx.array, temperature=0.666, top_p=0.9, top_k: int = 27, min_p: float = 0.0, min_tokens_to_keep: int = 2) -> mx.array:
-    batch_size = logits.shape[0]
     logit = logits[:, -1] / temperature  # (batch_size, vocab_size)
 
     # Calculate probabilities by softmaxing the temparature-scaled logits
@@ -47,31 +46,32 @@ def _sample(logits: mx.array, temperature=0.666, top_p=0.9, top_k: int = 27, min
 
     # Sort probabilities in descending order
     # This should then look like
-    sorted_indices = mx.argsort(-probs, axis=-1) # e.g. (bsz x [3, 1280, 1, 0, 2, ...])
-    sorted_probs = mx.take_along_axis(probs, sorted_indices, axis=-1) # e.g. (bsz x [0.9, 0.05, 0.02, 0.01, 0.01, ...])
+    sorted_indices = mx.argsort(-probs, axis=-1).squeeze(0) # e.g. [3, 1280, 1, 0, 2, ...]
+    sorted_probs = probs[..., sorted_indices] # e.g. [0.9, 0.05, 0.02, 0.01, 0.01, ...]
 
     # Apply min_p sampling
     if min_p > 0:
-        top_prob = sorted_probs[..., 0] # Highest probability e.g. (bsz x[0.9])
-        scaled_min_p = min_p * top_prob # e.g. 0.9 * 0.1 = 0.09, (bsz x[0.09])
-        min_p_mask = sorted_probs > scaled_min_p[..., None] # e.g. (bsz * [True, False, False, False, False, ...])
-        min_p_mask[..., :min_tokens_to_keep] = True # Keep at least min_tokens_to_keep tokens, e.g. (bsz * [True, True, True, False, False, ...])
-        sorted_probs = mx.where(min_p_mask, sorted_probs, 0.0) # e.g. (bsz * [0.9, 0.0, 0.0, 0.0, 0.0, ...])
+        top_prob = sorted_probs[..., 0] # Highest probability e.g. [0.9]
+        scaled_min_p = min_p * top_prob # e.g. 0.9 * 0.1 = 0.09
+        min_p_mask = sorted_probs > scaled_min_p # e.g. [True, False, False, False, False, ...]
+        min_p_mask[..., :min_tokens_to_keep] = True # Keep at least min_tokens_to_keep tokens, e.g. [True, True, True, False, False, ...]
+        sorted_probs = mx.where(min_p_mask, sorted_probs, 0.0) # e.g. [0.9, 0.0, 0.0, 0.0, 0.0, ...]
 
     # Apply top_p (nucleus) sampling
-    cumulative_probs = mx.cumsum(sorted_probs, axis=-1, inclusive = False) # e.g. (bsz * [0.9, 0.95, 0.97, 0.98, 0.99, ...]
-    # or, if min_p is applied, (bsz * [0.9, 0.0, 0.0, 0.0, 0.0, ...]
-    top_p_mask = cumulative_probs <= top_p # e.g. (bsz * [True, True, True, True, True, ...]
-    # or, if min_p is applied, (bsz * [True, False, False, False, False, ...]
-    top_p_mask[..., :min_tokens_to_keep] = True # Keep at least min_tokens_to_keep tokens, e.g. (bsz * [True, True, True, False, False, ...])
-    sorted_probs = mx.where(top_p_mask, sorted_probs, 0.0) # e.g. (bsz * [0.9, 0.05, 0.02, 0.01, 0.01, ...])
+    cumulative_probs = mx.cumsum(sorted_probs, axis=-1, inclusive = False) # e.g. [0.9, 0.95, 0.97, 0.98, 0.99, ...]
+    # or, if min_p is applied, [0.9, 0.0, 0.0, 0.0, 0.0, ...]
+    top_p_mask = cumulative_probs <= top_p # e.g. [True, True, True, True, True, ...]
+    # or, if min_p is applied, [True, False, False, False, False, ...]
+    top_p_mask[..., :min_tokens_to_keep] = True #
+    sorted_probs = mx.where(top_p_mask, sorted_probs, 0.0)
 
     # Optionally apply top_k sampling
-    sorted_probs[..., top_k:] = 0.0 # e.g. (bsz * [0.9, 0.05, 0.0, 0.0, 0.0, ...])
+    sorted_probs[..., top_k:] = 0.0
 
     # Sample token
-    sorted_token = mx.random.categorical(mx.log(sorted_probs))[..., None] # e.g. (bsz * [1390, 3, 2791, 1381, 12476, ...])
-    token = mx.take_along_axis(sorted_indices, sorted_token, axis=-1) # e.g. [3,] in shape (batch_size,)
+    sorted_token = mx.random.categorical(mx.log(sorted_probs))
+    token = sorted_indices[sorted_token]
+
     return token
 
 from pydantic import BaseModel
@@ -122,30 +122,6 @@ class SamplerConfig(BaseModel):
     ada_score_agree: float = 0.5
     ada_score_int: float = 0.6
 
-@mx.compile
-def score_sample(sample, logits, metrics):
-    batch_size, seq_length = sample.shape
-    vocab_size = logits.shape[-1]
-
-    # Create one-hot encoding
-    one_hot = mx.zeros((batch_size, seq_length, vocab_size))
-    one_hot[mx.arange(batch_size)[:, None], mx.arange(seq_length)[None, :], sample] = 1
-
-    # Calculate log probability
-    log_probs = mx.sum(mx.softmax(logits[:, -1], axis=-1).log()[:, None, :] * one_hot, axis=(1, 2))
-
-    # Calculate confidence score
-    confidence_scores = (
-        (1 - metrics["logits_entropy"]) * 0.1 +
-        (1 - metrics["attention_entropy"]) * 0.2 +
-        (1 - metrics["logits_varentropy"]) * 0.3 +
-        (1 - metrics["attention_varentropy"]) * 0.4 +
-        metrics["agreement"] * 0.5 +
-        metrics["interaction_strength"] * 0.6
-    )
-
-    return log_probs + confidence_scores
-
 def sample(
     gen_tokens: mx.array, logits: mx.array, scores: mx.array, cfg: SamplerConfig, clarifying_question_token: int = 2564
 ) -> mx.array:
@@ -156,7 +132,7 @@ def sample(
 
     # Low Entropy, Low Varentropy: "flowing with unspoken intent"
     if ent < cfg.low_ent_thresh and vent < cfg.low_vent_thresh:
-        return mx.argmax(logits[:, -1], axis=-1, keepdims=True)
+        return mx.argmax(logits[:, -1], axis=-1)
 
     # High Entropy, Low Varentropy: "treading carefully, asking clarifying questions"
     elif ent > cfg.high_ent_thresh and vent < cfg.low_vent_thresh:
@@ -207,9 +183,27 @@ def sample(
         )
         min_p = mx.clip(cfg.min_p * (1 - cfg.ada_min_p * logits_uncertainty), 0.01, 0.5)
 
-        # Sample from the logits
-        samples = _sample(mx.repeat(logits, cfg.n_adaptive_samples, axis = 0), temperature=temperature, top_p=top_p, top_k=top_k, min_p=min_p)
+        samples = []
+        for _ in range(cfg.n_adaptive_samples):
+            sample = _sample(logits, temperature=temperature, top_p=top_p, top_k=top_k, min_p=min_p)
+            samples.append(sample)
 
-        sample_scores = score_sample(samples, mx.repeat(logits, cfg.n_adaptive_samples, axis = 0), metrics)
-        best_sample_idx = mx.argmax(sample_scores)
-        return samples[best_sample_idx][None]
+        @mx.compile
+        def score_sample(sample):
+            one_hot = mx.zeros((sample.size, logits.shape[-1]))
+            one_hot[mx.arange(sample.size), sample] = 1
+            log_prob = mx.sum(mx.softmax(logits[:, -1], axis=-1).log() * one_hot)
+
+            confidence_score = (
+                (1 - metrics["logits_entropy"]) * 0.1 +
+                (1 - metrics["attention_entropy"]) * 0.2 +
+                (1 - metrics["logits_varentropy"]) * 0.3 +
+                (1 - metrics["attention_varentropy"]) * 0.4 +
+                metrics["agreement"] * 0.5 +
+                metrics["interaction_strength"] * 0.6
+            )
+            return log_prob + confidence_score
+
+        sample_scores = [score_sample(sample) for sample in samples]
+        best_sample_idx = mx.argmax(mx.array(sample_scores)).item()
+        return samples[best_sample_idx]
