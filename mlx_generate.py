@@ -9,8 +9,11 @@ from mlx_lm.sample_utils import top_p_sampling, min_p_sampling, categorical_samp
 import time
 from mlx_sampler import sample
 from mlx_attention_sampler import SamplerConfig
+import numpy as np
 
 LN_2 = 0.69314718056  # ln(2)
+max_float32 = np.finfo(np.float32).max
+DEFAULT_MASK_VALUE = -0.7 * mx.array(max_float32, dtype=mx.float16)
 
 def generate_step(
     prompt: mx.array,
@@ -66,8 +69,15 @@ def generate_step(
 
     def _step(y):
         logits, scores, attention_stats = model(y, cache=cache)
-        #logits = logits[:, -1, :]
-        y = sample(y, logits, scores, cfg = sampler_config) # Convert returned (bsz, 1) to (bsz, )
+        pad_length = model.max_seq_len - scores.shape[-1]
+        pad_width = [
+            (0, 0),  # No padding on batch_size axis
+            (0, 0),  # No padding on num_heads axis
+            (0, 0),  # No padding on query_length axis
+            (0, pad_length)  # Pad 0 before and pad_length after the key_length axis
+        ]
+        padded_scores = mx.pad(scores, pad_width=pad_width)
+        y = sample(y, logits, padded_scores, cfg = sampler_config) # Convert returned (bsz, 1) to (bsz, )
         return y
 
     while y.size > prefill_step_size:

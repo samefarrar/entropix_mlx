@@ -3,6 +3,7 @@ import mlx.core as mx
 import mlx.nn as nn
 from typing import Optional, List, Tuple, Union, Dict
 from mlx_attention_sampler import SamplerConfig
+import numpy as np
 
 LN_2 = 0.69314718056  # ln(2)
 
@@ -29,7 +30,6 @@ def calculate_metrics(logits: mx.array, attention_scores: mx.array) -> Dict[str,
     agreement = mx.mean(mx.abs(attention_probs - mean_attention[:, None, :]), axis = (1, 2))
 
     interaction_strength = mx.mean(mx.abs(attention_scores), axis = (1, 2, 3))
-
     return {
         "logits_entropy": mx.mean(entropy),
         "logits_varentropy": mx.mean(varentropy),
@@ -76,7 +76,16 @@ def _sample(logits: mx.array, temperature=0.666, top_p=0.9, top_k: int = 27, min
     return token
 
 @mx.compile
-def score_sample(sample, logits, metrics):
+def score_sample(
+    sample: mx.array,
+    logits: mx.array,
+    logits_entropy: float,
+    attention_entropy: float,
+    logits_varentropy: float,
+    attention_varentropy: float,
+    agreement: float,
+    interaction_strength: float
+) -> mx.array:
     batch_size, seq_length = sample.shape
     vocab_size = logits.shape[-1]
 
@@ -89,12 +98,12 @@ def score_sample(sample, logits, metrics):
 
     # Calculate confidence score
     confidence_scores = (
-        (1 - metrics["logits_entropy"]) * 0.1 +
-        (1 - metrics["attention_entropy"]) * 0.2 +
-        (1 - metrics["logits_varentropy"]) * 0.3 +
-        (1 - metrics["attention_varentropy"]) * 0.4 +
-        metrics["agreement"] * 0.5 +
-        metrics["interaction_strength"] * 0.6
+        (1 - logits_entropy) * 0.1 +
+        (1 - attention_entropy) * 0.2 +
+        (1 - logits_varentropy) * 0.3 +
+        (1 - attention_varentropy) * 0.4 +
+        agreement * 0.5 +
+        interaction_strength * 0.6
     )
 
     return log_probs + confidence_scores
@@ -106,13 +115,12 @@ def sample(
     ent, vent = metrics["logits_entropy"], metrics["logits_varentropy"]
     attention_entropy, attention_varentropy = metrics["attention_entropy"], metrics["attention_varentropy"]
     agreement, interaction_strength = metrics["agreement"], metrics["interaction_strength"]
-
     # Low Entropy, Low Varentropy: "flowing with unspoken intent"
     if ent < cfg.low_ent_thresh and vent < cfg.low_vent_thresh:
         return mx.argmax(logits[:, -1], axis=-1, keepdims=True)
 
     # High Entropy, Low Varentropy: "treading carefully, asking clarifying questions"
-    elif ent > cfg.high_ent_thresh and vent < cfg.low_vent_thresh:
+    elif ent > cfg.med_ent_thresh and vent < cfg.low_vent_thresh:
         #print("ε", flush = True, end = "")
         # Insert a clarifying question token if not already present
         if not mx.any(mx.equal(gen_tokens[:, -1], clarifying_question_token).any()):
@@ -132,11 +140,11 @@ def sample(
         # top_k_values, top_k_indices = mx.top_k(logits[:, -1], k=top_k)
         # return top_k_indices
         temp_adj = cfg.lehv_interaction_strength_offset + cfg.lehv_interaction_strength_coef * interaction_strength
-        top_k_adj = max(5, int(cfg.top_k * (1 + 0.5 * (1 - agreement))))
+        top_k_adj = max(5, int(cfg.top_k * (1 + 0.5 * (1 - 1000 * agreement))))
         return _sample(logits, temperature=min(1,5, cfg.temp * temp_adj), top_p = cfg.top_p, top_k = top_k_adj, min_p = cfg.min_p)
 
     # High Entropy, High Varentropy: "resampling in the mist"
-    elif ent > cfg.med_ent_thresh and vent > cfg.high_vent_thresh:
+    elif ent > cfg.high_ent_thresh and vent > cfg.high_vent_thresh:
         #print("!", flush = True, end = "")
         # Use high temperature and min_p sampling
         temp_adj = cfg.hehv_attn_vent_offset + cfg.hehv_attn_vent_coef * attention_varentropy
@@ -165,7 +173,16 @@ def sample(
         perturbed_logits = perturbed_logits + mx.random.normal(shape = perturbed_logits.shape, scale = logits.std() * cfg.ada_noise_scale)
         samples = _sample(perturbed_logits, temperature=temperature, top_p=top_p, top_k=top_k, min_p=min_p)
 
-        sample_scores = score_sample(samples, mx.repeat(logits, cfg.n_adaptive_samples, axis = 0), metrics)
+        sample_scores = score_sample(
+            samples,
+            perturbed_logits,
+            ent,
+            attention_entropy,
+            vent,
+            attention_varentropy,
+            agreement,
+            interaction_strength
+        )
 
         best_sample_idx = mx.argmax(sample_scores)
         return samples[best_sample_idx][None]
