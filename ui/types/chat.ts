@@ -2,6 +2,21 @@ export interface Message {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
+  metrics?: MessageMetrics;
+}
+
+export interface Metric {
+  cur_pos: number;
+  logits_entropy: number;
+  logits_varentropy: number;
+  attention_entropy: number;
+  attention_varentropy: number;
+  agreement: number;
+  interaction_strength: number;
+}
+
+export interface MessageMetrics {
+  metrics: Metric[];
 }
 
 export type Model = {
