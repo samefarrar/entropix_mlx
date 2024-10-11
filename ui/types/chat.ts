@@ -7,6 +7,7 @@ export interface Message {
 
 export interface Metric {
   cur_pos: number;
+  token: string;
   logits_entropy: number;
   logits_varentropy: number;
   attention_entropy: number;
