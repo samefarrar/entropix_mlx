@@ -1,14 +1,20 @@
 // @/library/api.ts
-import { Message } from "./types";
-const API_URL = "http://localhost:8000"; // Update this with your server's URL
+import { Message, Metric } from "@/types/chat";
+
+const API_URL = "http://localhost:8000";
 const MAX_TOKENS = 2048;
+
+interface ApiResponse {
+  response: string;
+  metrics: Metric[];
+}
 
 export async function sendMessage(
   message: Message[] | Message,
   systemPrompt: string,
   modelId: string,
-  onUpdate?: (update: string) => void,
-) {
+  onUpdate?: (update: { text: string; metrics: Metric[] }) => void,
+): Promise<ApiResponse> {
   console.log("Pre-parsed messages: ", message);
   const messages = Array.isArray(message)
     ? message.map(({ role, content }) => ({ role, content }))
@@ -27,7 +33,6 @@ export async function sendMessage(
     return message;
   });
 
-  // Only add the system prompt if it's not empty
   if (systemPrompt.trim() !== "") {
     processedMessages = [
       { role: "system", content: systemPrompt },
@@ -61,6 +66,8 @@ export async function sendMessage(
     const reader = response.body?.getReader();
     const decoder = new TextDecoder();
     let fullResponse = "";
+    let fullMetrics: Metric[] = [];
+
     while (true) {
       const { done, value } = await reader?.read();
       if (done) break;
@@ -74,26 +81,26 @@ export async function sendMessage(
             const parsed = JSON.parse(data);
             const content = parsed.choices[0]?.delta?.content || "";
             fullResponse += content;
-            onUpdate(fullResponse);
+            if (parsed.metrics) {
+              fullMetrics = [...fullMetrics, parsed.metrics];
+            }
+            onUpdate({ text: fullResponse, metrics: fullMetrics });
           } catch (error) {
             console.error("Error parsing JSON:", error);
           }
         }
       }
     }
-    return fullResponse; // Return the full response string directly
+    return { response: fullResponse, metrics: fullMetrics };
   } else {
     // Non-streaming case
     const api_response = await response.json();
-    return new Promise<string>((resolve) => {
+    return new Promise<ApiResponse>((resolve) => {
       setTimeout(() => {
-        resolve(
-          JSON.stringify({
-            response: api_response.choices[0].message.content,
-            thinking: "Thinking process...",
-            user_mood: "neutral",
-          }),
-        );
+        resolve({
+          response: api_response.choices[0].message.content,
+          metrics: api_response.metrics || [],
+        });
       }, 1000);
     });
   }
