@@ -83,6 +83,7 @@ def generate_step(
         # padded_scores = mx.pad(scores, pad_width=pad_width)
         y, metrics = sample(y, logits, scores, cfg = sampler_config) # Convert returned (bsz, 1) to (bsz, )
         metrics = {k: v.item() for k, v in metrics.items()}
+        metrics["cur_pos"] = scores.shape[-1]
         return y, metrics
 
     while y.size > prefill_step_size:
