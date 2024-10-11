@@ -60,6 +60,7 @@ class EntropixAPIHandler(APIHandler):
         detokenizer.reset()
 
         tokens = []
+        metrics_list = []
         finish_reason = "length"
         stop_sequence_suffix = None
 
@@ -75,6 +76,8 @@ class EntropixAPIHandler(APIHandler):
             detokenizer.add_token(token)
             logging.debug(detokenizer.text)
             tokens.append(token)
+            metrics["token"] = self.tokenizer.decode([token])
+            metrics_list.append(metrics)
 
             stop_condition = stopping_criteria(
                 tokens, stop_id_sequences, self.tokenizer.eos_token_id
@@ -95,6 +98,7 @@ class EntropixAPIHandler(APIHandler):
         )
         response = self.generate_metrics_response(
             text=text,
+            metrics=metrics_list,
             finish_reason=finish_reason,
             prompt_token_count=len(prompt),
             completion_token_count=len(tokens),
@@ -125,6 +129,7 @@ class EntropixAPIHandler(APIHandler):
         detokenizer.reset()
 
         tokens = []
+        metrics_list = []
 
         stop_sequence_suffix = None
 
@@ -169,7 +174,7 @@ class EntropixAPIHandler(APIHandler):
         if last_segment:
             if stop_sequence_suffix is not None:
                 last_segment = last_segment[: -len(stop_sequence_suffix)]
-            response = self.generate_metrics_response(last_segment, "length")
+            response = self.generate_metrics_response(last_segment, "length", metrics = metrics_list)
             self.wfile.write(f"data: {json.dumps(response)}\n\n".encode())
             self.wfile.flush()
 
@@ -184,7 +189,7 @@ class EntropixAPIHandler(APIHandler):
        self,
        text: str,
        finish_reason: Union[Literal["length", "stop"], None],
-       metrics: Optional[Dict[str, float]] = None,
+       metrics: Optional[Union[Dict[str, float], List[Dict[str, float]]]] = None,
        prompt_token_count: Optional[int] = None,
        completion_token_count: Optional[int] = None,
    ) -> dict:
