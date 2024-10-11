@@ -12,7 +12,7 @@ import EditModal from "./EditModal";
 import ArtifactSidebar from "../Artifacts/Sidebar";
 import { motion, AnimatePresence } from "framer-motion";
 import { sendMessage } from "@/library/api";
-import { Message, Model, ArtifactContent } from "@/types/chat";
+import { Message, Model, ArtifactContent, MessageMetrics } from "@/types/chat";
 
 function ChatArea() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -95,10 +95,11 @@ function ChatArea() {
                   ? {
                       ...msg,
                       content: JSON.stringify({
-                        response: update,
+                        response: update.text,
                         thinking: "Thinking process...",
                         user_mood: "neutral",
                       }),
+                      metrics: { metrics: update.metrics },
                     }
                   : msg,
               ),
@@ -112,7 +113,9 @@ function ChatArea() {
           systemPrompt,
           selectedModel,
         );
-        assistantMessage.content = response;
+        console.log(response);
+        assistantMessage.content = response.response;
+        assistantMessage.metrics = { metrics: response.metrics };
         setMessages([...updatedMessages, assistantMessage]);
       }
 

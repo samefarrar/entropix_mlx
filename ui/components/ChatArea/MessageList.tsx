@@ -3,7 +3,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Pencil } from "lucide-react";
 import MessageContent from "./MessageContent";
-import { Message } from "./types";
+import { MetricsChart } from "../MetricsChart";
+import { Message, MessageMetrics } from "@/types/chat";
 
 interface MessageListProps {
   messages: Message[];
@@ -45,6 +46,9 @@ const MessageList: React.FC<MessageListProps> = ({
               >
                 <Pencil className="h-4 w-4" />
               </Button>
+              {message.role === "assistant" && message.metrics && (
+                <MetricsChart metrics={message.metrics.metrics} />
+              )}
             </div>
           </div>
         </div>

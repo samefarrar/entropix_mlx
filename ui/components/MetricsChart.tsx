@@ -1,5 +1,3 @@
-"use client";
-
 import React from "react";
 import {
   CartesianGrid,
@@ -9,6 +7,8 @@ import {
   YAxis,
   Tooltip,
   Legend,
+  LabelList,
+  Label,
 } from "recharts";
 import {
   Card,
@@ -25,6 +25,7 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import { Metric } from "@/types/chat";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface MetricsChartProps {
   metrics: Metric[];
@@ -55,9 +56,26 @@ const chartConfig = {
     label: "Interaction Strength",
     color: "hsl(var(--chart-6))",
   },
+  token: {
+    label: "Token",
+  },
 } satisfies ChartConfig;
 
 export function MetricsChart({ metrics }: MetricsChartProps) {
+  if (!metrics || metrics.length === 0) {
+    return (
+      <Card className="w-full">
+        <CardHeader>
+          <CardTitle>Generation Metrics</CardTitle>
+          <CardDescription>Loading metrics...</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Skeleton className="h-[200px] w-full" />
+        </CardContent>
+      </Card>
+    );
+  }
+  console.log(metrics);
   return (
     <Card className="w-full">
       <CardHeader>
@@ -69,8 +87,10 @@ export function MetricsChart({ metrics }: MetricsChartProps) {
           <LineChart
             data={metrics}
             margin={{
+              top: 30, // Increased top margin to accommodate the title
               left: 12,
               right: 12,
+              bottom: 5,
             }}
           >
             <CartesianGrid vertical={false} />
@@ -81,25 +101,35 @@ export function MetricsChart({ metrics }: MetricsChartProps) {
               tickMargin={8}
             />
             <YAxis />
-            <ChartTooltip cursor={false} content={<ChartTooltipContent />} />
-            {Object.entries(chartConfig).map(([key, config]) => (
-              <Line
-                key={key}
-                type="monotone"
-                dataKey={key}
-                stroke={config.color}
-                strokeWidth={2}
-                dot={false}
-              />
-            ))}
+            <ChartTooltip
+              cursor={false}
+              content={
+                <ChartTooltipContent
+                  labelFormatter={(label, payload) => {
+                    const token = payload[0]?.payload?.token;
+                    return `Token: ${token}`;
+                  }}
+                />
+              }
+            />
+            {Object.entries(chartConfig).map(([key, config]) => {
+              if (key !== "token") {
+                return (
+                  <Line
+                    key={key}
+                    type="monotone"
+                    dataKey={key}
+                    stroke={config.color}
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                );
+              }
+              return null;
+            })}
           </LineChart>
         </ChartContainer>
       </CardContent>
-      <CardFooter>
-        <div className="text-sm text-muted-foreground">
-          Showing metrics for each token position in the generated response
-        </div>
-      </CardFooter>
     </Card>
   );
 }
