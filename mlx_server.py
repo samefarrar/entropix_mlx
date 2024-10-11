@@ -146,6 +146,8 @@ class EntropixAPIHandler(APIHandler):
             detokenizer.add_token(token)
             logging.debug(detokenizer.text)
             tokens.append(token)
+            metrics["token"] = self.tokenizer.decode([token])
+            metrics_list.append(metrics)
 
             stop_condition = stopping_criteria(
                 tokens, stop_id_sequences, self.tokenizer.eos_token_id
