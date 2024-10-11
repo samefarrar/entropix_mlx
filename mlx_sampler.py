@@ -84,7 +84,13 @@ def score_sample(
     logits_varentropy: float,
     attention_varentropy: float,
     agreement: float,
-    interaction_strength: float
+    interaction_strength: float,
+    ADA_SCORE_LOGITS_ENT: float,
+    ADA_SCORE_ATT_ENT: float,
+    ADA_SCORE_LOGITS_VAR: float,
+    ADA_SCORE_ATT_VAR: float,
+    ADA_SCORE_AGREEMENT: float,
+    ADA_SCORE_INTERACTION: float
 ) -> mx.array:
     batch_size, seq_length = sample.shape
     vocab_size = logits.shape[-1]
@@ -98,26 +104,26 @@ def score_sample(
 
     # Calculate confidence score
     confidence_scores = (
-        (1 - logits_entropy) * 0.1 +
-        (1 - attention_entropy) * 0.2 +
-        (1 - logits_varentropy) * 0.3 +
-        (1 - attention_varentropy) * 0.4 +
-        agreement * 0.5 +
-        interaction_strength * 0.6
+        (1 - logits_entropy) * ADA_SCORE_LOGITS_ENT +
+        (1 - attention_entropy) * ADA_SCORE_ATT_ENT +
+        (1 - logits_varentropy) * ADA_SCORE_LOGITS_VAR +
+        (1 - attention_varentropy) * ADA_SCORE_ATT_VAR +
+        agreement * ADA_SCORE_AGREEMENT +
+        interaction_strength * ADA_SCORE_INTERACTION
     )
 
     return log_probs + confidence_scores
 
 def sample(
     gen_tokens: mx.array, logits: mx.array, scores: mx.array, cfg: SamplerConfig, clarifying_question_token: int = 2564
-) -> mx.array:
+) -> Tuple[mx.array, Dict[str, float]]:
     metrics = calculate_metrics(logits, scores)
     ent, vent = metrics["logits_entropy"], metrics["logits_varentropy"]
     attention_entropy, attention_varentropy = metrics["attention_entropy"], metrics["attention_varentropy"]
     agreement, interaction_strength = metrics["agreement"], metrics["interaction_strength"]
     # Low Entropy, Low Varentropy: "flowing with unspoken intent"
     if ent < cfg.low_ent_thresh and vent < cfg.low_vent_thresh:
-        return mx.argmax(logits[:, -1], axis=-1, keepdims=True)
+        return mx.argmax(logits[:, -1], axis=-1, keepdims=True), metrics
 
     # High Entropy, Low Varentropy: "treading carefully, asking clarifying questions"
     elif ent > cfg.med_ent_thresh and vent < cfg.low_vent_thresh:
@@ -126,11 +132,11 @@ def sample(
         if not mx.any(mx.equal(gen_tokens[:, -1], clarifying_question_token).any()):
             return mx.array(
                 [[clarifying_question_token]]
-            )  # Assuming 2564 is our "ask clarifying question" token
+            ), metrics  # Assuming 2564 is our "ask clarifying question" token
         else:
             # If we've just asked a question, sample with slightly higher temperature
             temp_adj = cfg.helv_attn_ent_offset + cfg.helv_attn_ent_coef * attention_entropy # Increase temperature
-            return _sample(logits, temperature=min(1.5, cfg.temp * temp_adj), top_p = cfg.top_p, top_k = cfg.top_k, min_p = cfg.min_p)
+            return _sample(logits, temperature=min(1.5, cfg.temp * temp_adj), top_p = cfg.top_p, top_k = cfg.top_k, min_p = cfg.min_p), metrics
 
     # Low Entropy, High Varentropy: "exploring forks in the path"
     elif ent < cfg.high_ent_thresh and vent > cfg.high_vent_thresh:
@@ -140,8 +146,8 @@ def sample(
         # top_k_values, top_k_indices = mx.top_k(logits[:, -1], k=top_k)
         # return top_k_indices
         temp_adj = cfg.lehv_interaction_strength_offset + cfg.lehv_interaction_strength_coef * interaction_strength
-        top_k_adj = max(5, int(cfg.top_k * (1 + 0.5 * (1 - 1000 * agreement))))
-        return _sample(logits, temperature=min(1,5, cfg.temp * temp_adj), top_p = cfg.top_p, top_k = top_k_adj, min_p = cfg.min_p)
+        top_k_adj = max(5, int(cfg.top_k * (1 + 0.5 * (1 - agreement))))
+        return _sample(logits, temperature=min(1,5, cfg.temp * temp_adj), top_p = cfg.top_p, top_k = top_k_adj, min_p = cfg.min_p), metrics
 
     # High Entropy, High Varentropy: "resampling in the mist"
     elif ent > cfg.high_ent_thresh and vent > cfg.high_vent_thresh:
@@ -149,7 +155,7 @@ def sample(
         # Use high temperature and min_p sampling
         temp_adj = cfg.hehv_attn_vent_offset + cfg.hehv_attn_vent_coef * attention_varentropy
         top_p_adj = max(0.5, cfg.top_p - cfg.hehv_attn_ent_coef * attention_entropy)
-        return _sample(logits, temperature=max(2.0, cfg.temp * temp_adj), top_p = top_p_adj, top_k = cfg.top_k, min_p = cfg.min_p)
+        return _sample(logits, temperature=max(2.0, cfg.temp * temp_adj), top_p = top_p_adj, top_k = cfg.top_k, min_p = cfg.min_p), metrics
 
     # Middle ground: smooth transition
     else:
@@ -157,11 +163,11 @@ def sample(
         logits_uncertainty = metrics["logits_entropy"] + metrics["logits_varentropy"]
         attention_uncertainty = metrics["attention_entropy"] + metrics["attention_varentropy"]
 
-        temperature = cfg.temp * (1 + cfg.ada_temp_logits * logits_uncertainty + cfg.ada_temp_attn * attention_uncertainty - cfg.ada_temp_agree * metrics["agreement"])
-        top_p = mx.clip(cfg.top_p * (1 + cfg.ada_top_p * metrics["attention_varentropy"]), 0.1, 1.0)
+        temperature = cfg.temp * (1 + cfg.ada_temp_logits * logits_uncertainty + cfg.ada_temp_attn * attention_uncertainty - cfg.ada_temp_agree * agreement)
+        top_p = mx.clip(cfg.top_p * (1 + cfg.ada_top_p * attention_varentropy), 0.1, 1.0)
         top_k = int(
             mx.clip(
-                mx.round(cfg.top_k * (1 + cfg.ada_top_k_int * metrics["interaction_strength"].item() - cfg.ada_top_k_agree * metrics['agreement'].item())),
+                mx.round(cfg.top_k * (1 + cfg.ada_top_k_int * interaction_strength.item() - cfg.ada_top_k_agree * agreement.item())),
                 a_min = 1,
                 a_max = 100
             )
@@ -170,7 +176,8 @@ def sample(
 
         # Sample from the logits
         perturbed_logits = mx.repeat(logits, cfg.n_adaptive_samples, axis = 0)
-        perturbed_logits = perturbed_logits + mx.random.normal(shape = perturbed_logits.shape, scale = logits.std() * cfg.ada_noise_scale)
+        gumbel_noise = mx.random.gumbel(perturbed_logits.shape) * cfg.ada_noise_scale
+        perturbed_logits = perturbed_logits + gumbel_noise
         samples = _sample(perturbed_logits, temperature=temperature, top_p=top_p, top_k=top_k, min_p=min_p)
 
         sample_scores = score_sample(
@@ -181,8 +188,14 @@ def sample(
             vent,
             attention_varentropy,
             agreement,
-            interaction_strength
+            interaction_strength,
+            cfg.ada_score_logits_ent,
+            cfg.ada_score_attn_ent,
+            cfg.ada_score_logits_vent,
+            cfg.ada_score_attn_vent,
+            cfg.ada_score_agree,
+            cfg.ada_score_int,
         )
 
         best_sample_idx = mx.argmax(sample_scores)
-        return samples[best_sample_idx][None]
+        return samples[best_sample_idx][None], metrics
