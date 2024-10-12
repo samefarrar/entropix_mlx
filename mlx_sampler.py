@@ -39,7 +39,7 @@ def calculate_metrics(logits: mx.array, attention_scores: mx.array) -> Dict[str,
         "interaction_strength": interaction_strength
     }
 
-def _sample(logits: mx.array, temperature=0.666, top_p=0.9, top_k: int = 27, min_p: float = 0.0, min_tokens_to_keep: int = 2) -> mx.array:
+def _sample(logits: mx.array, temperature=0.666, top_p=0.9, top_k: int = 27, min_p: float = 0.0, min_tokens_to_keep: int = 2, key = mx.random.key(1337)) -> mx.array:
     batch_size = logits.shape[0]
     logit = logits[:, -1] / temperature  # (batch_size, vocab_size)
 
@@ -71,7 +71,7 @@ def _sample(logits: mx.array, temperature=0.666, top_p=0.9, top_k: int = 27, min
     sorted_probs[..., top_k:] = 0.0 # e.g. (bsz * [0.9, 0.05, 0.0, 0.0, 0.0, ...])
 
     # Sample token
-    sorted_token = mx.random.categorical(mx.log(sorted_probs))[..., None] # e.g. (bsz * [1390, 3, 2791, 1381, 12476, ...])
+    sorted_token = mx.random.categorical(mx.log(sorted_probs), key=key)[..., None] # e.g. (bsz * [1390, 3, 2791, 1381, 12476, ...])
     token = mx.take_along_axis(sorted_indices, sorted_token, axis=-1) # e.g. [3,] in shape (batch_size,)
     return token
 
@@ -115,7 +115,7 @@ def score_sample(
     return log_probs + confidence_scores
 
 def sample(
-    gen_tokens: mx.array, logits: mx.array, scores: mx.array, cfg: SamplerConfig, clarifying_question_token: int = 2564
+    gen_tokens: mx.array, logits: mx.array, scores: mx.array, cfg: SamplerConfig, clarifying_question_token: int = 2564, keys = mx.random.key(seed = 1337)
 ) -> Tuple[mx.array, Dict[str, float]]:
     metrics = calculate_metrics(logits, scores)
     ent, vent = metrics["logits_entropy"], metrics["logits_varentropy"]
@@ -175,27 +175,28 @@ def sample(
         min_p = mx.clip(cfg.min_p * (1 - cfg.ada_min_p * logits_uncertainty), 0.01, 0.5)
 
         # Sample from the logits
-        perturbed_logits = mx.repeat(logits, cfg.n_adaptive_samples, axis = 0)
-        gumbel_noise = mx.random.gumbel(perturbed_logits.shape) * cfg.ada_noise_scale
-        perturbed_logits = perturbed_logits + gumbel_noise
-        samples = _sample(perturbed_logits, temperature=temperature, top_p=top_p, top_k=top_k, min_p=min_p)
+        samples = []
+        sample_scores = []
+        keys = mx.random.split(keys, num = cfg.n_adaptive_samples)
 
-        sample_scores = score_sample(
-            samples,
-            perturbed_logits,
-            ent,
-            attention_entropy,
-            vent,
-            attention_varentropy,
-            agreement,
-            interaction_strength,
-            cfg.ada_score_logits_ent,
-            cfg.ada_score_attn_ent,
-            cfg.ada_score_logits_vent,
-            cfg.ada_score_attn_vent,
-            cfg.ada_score_agree,
-            cfg.ada_score_int,
-        )
+        for sample_key in keys:
+            sample = _sample(logits, temperature=temperature, top_p=top_p, top_k=top_k, min_p=min_p, key = sample_key)
+            samples.append(sample)
+            sample_scores.append(score_sample(sample,
+                logits,
+                logits_entropy=ent,
+                logits_varentropy=vent,
+                attention_entropy=attention_entropy,
+                attention_varentropy=attention_varentropy,
+                agreement=agreement,
+                interaction_strength=interaction_strength,
+                ADA_SCORE_LOGITS_ENT=cfg.ada_score_logits_ent,
+                ADA_SCORE_LOGITS_VAR=cfg.ada_score_logits_vent,
+                ADA_SCORE_ATT_ENT=cfg.ada_score_attn_ent,
+                ADA_SCORE_ATT_VAR=cfg.ada_score_attn_vent,
+                ADA_SCORE_AGREEMENT=cfg.ada_score_agree,
+                ADA_SCORE_INTERACTION=cfg.ada_score_int
+            ))
 
-        best_sample_idx = mx.argmax(sample_scores)
-        return samples[best_sample_idx][None], metrics
+        best_sample_idx = mx.argmax(mx.array(sample_scores)).item()
+        return samples[best_sample_idx], metrics
