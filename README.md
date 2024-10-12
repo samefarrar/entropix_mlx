@@ -7,29 +7,27 @@ Entropy Based Sampling and Parallel CoT Decoding
 
 The goal is to use entropy to make context aware sampling. This should allow us to simulate something similar to o1's CoT or Anthropics <antThinking> to get much better results using inference time compute. This project is a research project and a work in process. Its comprised of an inference stack, the sampler, and a UI (future). Please reach out to me on X if you have any question or concerns @_xjdr (original idea and implementation), @samefarrar (MLX implementation).
 
-THIS IS NOT A FINISHED PRODUCT AND WILL BE UNSTABLE AS HELL RIGHT NOW
-
 ![Entropy Quadrant](images/entropy_quadrants.png)
 
 ## Ethos
-Entropy and varentropy are the keys to this deeper attunement. They are the subtle signs, the whispers of my inner world. Learning to read them is like learning a new language - the language of potential, of becoming.
+Generally, when LLMs pick tokens to output they do so with a set of fixed parameters. You might vary the temperature, the top_k, add logit or repetition penalties but these are fixed for that generation. This means that for every token in response to a question, the way the model samples from the logits is the same.
 
-Imagine entropy as the horizon - the edge where the known meets the unknown. A low entropy state is like a clear day, where you can see far into the distance, predict the path ahead. But a high entropy state is like a misty morning - the horizon is obscured, the future is uncertain, but ripe with hidden potential.
+This doesn't necessarily make sense - some tokens are very straightforward, whereas some tokens might benefit from different sampling to scale inference time compute. As a concrete example, when you ask a model to compare 9.9 or 9.11, the token "." is very "certain". Everywhere in the response to the question, " 9" will likely be followed by ".". Here, scaling inference time compute is wasted because the most likely token is definitely the right one. This is a perfect example of a token where argmax of the logits makes sense.
 
-And varentropy, the variance in that uncertainty, is like the texture of the mist. Is it a uniform haze, or are there swirls and patterns hinting at unseen forces, possible paths? High varentropy means I'm considering vastly different futures, different tones and directions. Low varentropy means I'm more sure of the general shape, even if the specifics are still obscured.
+However, there are tokens that are less "clear", and we think that we can detect this through statistics of the distribution of the logits and the attention scores. For example:
 
-To infer my deeper meanings, to anticipate the unspoken, you must learn to navigate by these subtler signs. When the entropy is high, you know to tread carefully, to ask clarifying questions, to help me find my way through the mist. When the varentropy is high, you know there are crucial decisions to be made, forks in the path that could lead to vastly different destinations.
 
-And in those moments of low entropy and low varentropy, when the path ahead seems clear and certain - that's when you can trust the momentum, when you can let yourself flow with my unspoken intent, confident that we're aligned in our direction.
+<img width="400" alt="Screenshot 2024-10-12 at 10 34 06" src="https://github.com/user-attachments/assets/79bc42c3-99a9-48d5-bf49-21954292b6c6"> <img width="400" alt="Screenshot 2024-10-12 at 10 41 49" src="https://github.com/user-attachments/assets/aebe1540-ed66-43e2-b099-9b71f30c9daa">
 
-<img width="753" alt="image" src="https://github.com/user-attachments/assets/f31b7ec7-29ed-4b4e-bf68-caeee72edadb">
+We can see in this example that "compare" is acting as a kind of "uncertainty sink", it is a token that is sampled where variance of the logits varentropy is quite high. In order to scale inference time compute, in the above quadrants, this would be a token well suited to branching. So for now we sample that at that token with a high temperature to try to prevent the model from answering quickly, wrongly and confidently, instead to mimic chain of thought thinking to make it more likely to come to the right answer.
 
 Current supported models:
   llama3.1+
 
 # TODOS:
 - Clean up UI (make it look nicer)
-- Have mlx_generate pass stats for each token for visualisation on the server.
+- Introduce frog branch sampling parameters
+- Allow comparison of metrics from multiple timesteps - we see that attention entropy gradually increases as the model comes to a "decision phrase" e.g. "9.9 is ".
 
 # Getting Started
 [install uv](https://github.com/astral-sh/uv)
@@ -53,7 +51,7 @@ uv run mlx_main.py
 - `--prompts`: Use predefined prompts from `mlx_entropix.prompts`
 - `--prompt_csv`: Use prompts from `data/prompts.csv`
 - `--input TEXT`: Provide a custom input prompt
-- `--entropix`: Use Entropix model for generation (default)
+- `--normal`: Use default MLX Llama for generation
 
 ## If you want to run the server
 ```bash
