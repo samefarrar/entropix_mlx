@@ -19,7 +19,7 @@ However, there are tokens that are less "clear", and we think that we can detect
 
 <img width="400" alt="Screenshot 2024-10-12 at 10 34 06" src="https://github.com/user-attachments/assets/79bc42c3-99a9-48d5-bf49-21954292b6c6"> <img width="400" alt="Screenshot 2024-10-12 at 10 41 49" src="https://github.com/user-attachments/assets/aebe1540-ed66-43e2-b099-9b71f30c9daa">
 
-We can see in this example that "compare" is acting as a kind of "uncertainty sink", it is a token that is sampled where variance of the logits varentropy is quite high. In order to scale inference time compute, in the above quadrants, this would be a token well suited to branching. So for now we sample that at that token with a high temperature to try to prevent the model from answering quickly, wrongly and confidently, instead to mimic chain of thought thinking to make it more likely to come to the right answer.
+We can see in this example that "compare" is acting as a kind of "uncertainty sink", it is a token that is sampled where the logits varentropy is quite high. In order to scale inference time compute, in the above quadrants, this would be a token well suited to branching. So for now we sample that at that token with a high temperature to try to prevent the model from answering quickly, wrongly and confidently, instead to mimic chain of thought thinking to make it more likely to come to the right answer.
 
 Current supported models:
   llama3.1+
