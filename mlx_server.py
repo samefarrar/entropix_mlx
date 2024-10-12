@@ -10,8 +10,8 @@ from torch.utils.data.sampler import Sampler
 from mlx_model import load_entropix_model
 from mlx_generate import generate_step as generate_step
 from mlx_lm.utils import generate_step as generate_step_mlx_lm
-from mlx_sampler import SamplerConfig
 from mlx_lm.server import APIHandler, stopping_criteria, ModelProvider, sequence_overlap
+from mlx_attention_sampler import SamplerConfig
 from typing import List, Union, Literal, Optional, Dict
 
 class EntropixModelProvider(ModelProvider):
@@ -49,7 +49,6 @@ class EntropixModelProvider(ModelProvider):
 
 class EntropixAPIHandler(APIHandler):
     def __init__(self, model_provider: ModelProvider, *args, **kwargs):
-        self.sampler_config = kwargs.pop('sampler_config', None)
         super().__init__(model_provider, *args, **kwargs)
 
     def handle_completion(self, prompt, stop_id_sequences: List[List[int]]):
@@ -187,6 +186,10 @@ class EntropixAPIHandler(APIHandler):
         self.wfile.write("data: [DONE]\n\n".encode())
         self.wfile.flush()
 
+    def do_POST(self):
+        self.sampler_config = SamplerConfig()
+        return super().do_POST()
+
     def generate_metrics_response(
        self,
        text: str,
@@ -250,12 +253,10 @@ class EntropixAPIHandler(APIHandler):
 
 def run_server(host, port, model_provider, normal = False):
     server_address = (host, port)
-    sampler_config = SamplerConfig()
     if normal:
         handler_class = lambda *args, **kwargs: APIHandler(model_provider, *args, **kwargs)
     else:
         def create_handler(*args, **kwargs):
-            kwargs['sampler_config'] = sampler_config
             return EntropixAPIHandler(model_provider, *args, **kwargs)
         handler_class = create_handler
     httpd = HTTPServer(server_address, handler_class)

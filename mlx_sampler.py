@@ -139,15 +139,15 @@ def sample(
             return _sample(logits, temperature=min(1.5, cfg.temp * temp_adj), top_p = cfg.top_p, top_k = cfg.top_k, min_p = cfg.min_p), metrics
 
     # Low Entropy, High Varentropy: "exploring forks in the path"
-    elif ent < cfg.high_ent_thresh and vent > cfg.high_vent_thresh:
+    elif ent < cfg.med_ent_thresh and vent > cfg.high_vent_thresh:
         #print("Ψ", flush = True, end = "")
         # TODO(xjdr): Implement proper branching logic
         # Return top-k tokens to allow for branching
         # top_k_values, top_k_indices = mx.top_k(logits[:, -1], k=top_k)
         # return top_k_indices
         temp_adj = cfg.lehv_interaction_strength_offset + cfg.lehv_interaction_strength_coef * interaction_strength
-        top_k_adj = max(5, int(cfg.top_k * (1 + 0.5 * (1 - agreement))))
-        return _sample(logits, temperature=min(1,5, cfg.temp * temp_adj), top_p = cfg.top_p, top_k = top_k_adj, min_p = cfg.min_p), metrics
+        top_k_adj = max(cfg.top_k, int(cfg.top_k * (1 + 0.5 * (1 - agreement))))
+        return _sample(logits, temperature=min(1.5, cfg.temp * temp_adj), top_p = cfg.top_p, top_k = top_k_adj, min_p = cfg.min_p), metrics
 
     # High Entropy, High Varentropy: "resampling in the mist"
     elif ent > cfg.high_ent_thresh and vent > cfg.high_vent_thresh:
