@@ -6,44 +6,67 @@ class SamplerConfig(BaseModel):
     This should be a good starting point for baselining experiments.
     """
 
-    temp: float = 0.666
+    temperature: float = 0.666
     top_p: float = 0.90
     top_k: int = 27
-    min_p: float = 0.03  # Turn this down to 0.01 to reduce the shoggoth
+    min_probability: float = 0.03  # Turn this down to 0.01 to reduce the shoggoth
 
-    low_ent_thresh: float = 0.1
-    low_vent_thresh: float = 0.1
-    med_ent_thresh: float = 3.0
-    med_vent_thresh: float = 3.0
-    high_ent_thresh: float = 4.0
-    high_vent_thresh: float = 7.0
+    # Logits entropy thresholds
+    low_logits_entropy_threshold: float = 0.1
+    medium_logits_entropy_threshold: float = 3.0
+    high_logits_entropy_threshold: float = 4.0
+
+    # Logits varentropy thresholds
+    low_logits_varentropy_threshold: float = 0.1
+    medium_logits_varentropy_threshold: float = 3.0
+    high_logits_varentropy_threshold: float = 7.0
+
+    # Attention Entropy Thresholds
+    low_attention_entropy_threshold: float = 1.6
+    medium_attention_entropy_threshold: float = 2.0
+    high_attention_entropy_threshold: float = 2.5
+
+    # Attention Varentropy Thresholds
+    low_attention_varentropy_threshold: float = 0.25
+    medium_attention_varentropy_threshold: float = 0.8
+    high_attention_varentropy_threshold: float = 1.5
+
+    # Agreement thresholds
+    low_agreement_threshold: float = 2.2e-3
+    medium_agreement_threshold: float = 3e-3
+    high_agreement_threshold: float = 3.8e-3
+
+    # Interaction strength thresholds
+    low_interaction_strength_threshold: float = 6.06
+    medium_interaction_strength_threshold: float = 6.4
+    high_interaction_strength_threshold: float = 7.0
 
     # TODO this is a bit of a nasty mess, but also makes all the hyperparameters visible
-    helv_attn_ent_offset: float = 1.3
-    helv_attn_ent_coef: float = 0.2
+    high_entropy_attention_offset: float = 1.3
+    high_entropy_attention_coefficient: float = 0.689
 
-    lehv_interaction_strength_offset: float = 1.2
-    lehv_interaction_strength_coef: float = 0.1
+    low_entropy_interaction_strength_offset: float = 1.2
+    low_entropy_interaction_strength_coefficient: float = 0.05
 
-    hehv_attn_ent_coef: float = 0.2 / 0.29
-    hehv_attn_vent_offset: float = 1.3
-    hehv_attn_vent_coef: float = 0.5
+    high_entropy_varentropy_attention_offset: float = 1.2
+    high_entropy_varentropy_attention_coefficient: float = 0.7
 
     # TODO not convinced this should
     n_adaptive_samples: int = 5
-    ada_noise_scale: float = 1 / 3
+    ada_noise_scale: float = 0.33
 
     # Adaptive sampling parameters
-    ada_temp_logits: float = 0.3
-    ada_temp_attn: float = 0.2
-    ada_temp_agree: float = 0.2
-    ada_top_p: float = 0.1
-    ada_top_k_int: float = 0.3
-    ada_top_k_agree: float = 0.2
-    ada_min_p: float = 0.5
-    ada_score_logits_ent: float = 0.1
-    ada_score_attn_ent: float = 0.2 / 0.29
-    ada_score_logits_vent: float = 0.3
-    ada_score_attn_vent: float = 0.4 * 100
-    ada_score_agree: float = 0.5
-    ada_score_int: float = 0.6
+    adaptive_temperature_logits_coefficient: float = 0.2
+    adaptive_temperature_attention_coefficient: float = 0.6
+    adaptive_temperature_agreement_coefficient: float = 100
+    adaptive_top_p_coefficient: float = 0.8
+    adaptive_top_k_coefficient: float = 0.1
+    adaptive_top_k_interaction_coefficient: float = 0.1
+    adaptive_top_k_agreement_coefficient: float = 200
+    adaptive_min_p_coefficient: float = 0.05
+    adaptive_score_logits_entropy_coefficient: float = 0.1
+    adaptive_score_attention_entropy_coefficient: float = 0.2 / 0.29
+    adaptive_score_logits_varentropy_coefficient: float = 0.3
+    adaptive_score_attention_varentropy_coefficient: float = 0.4 * 100
+    adaptive_score_agreement_coefficient: float = 0.5
+    adaptive_score_interaction_strength_coefficient: float = 0.6
