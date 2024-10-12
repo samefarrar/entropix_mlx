@@ -90,7 +90,13 @@ def score_sample(
     ADA_SCORE_LOGITS_VAR: float,
     ADA_SCORE_ATT_VAR: float,
     ADA_SCORE_AGREEMENT: float,
-    ADA_SCORE_INTERACTION: float
+    ADA_SCORE_INTERACTION: float,
+    HIGH_LOGITS_ENTROPY_THRESHOLD: float,
+    HIGH_LOGITS_VARENTROPY_THRESHOLD: float,
+    HIGH_ATTENTION_ENTROPY_THRESHOLD: float,
+    HIGH_ATTENTION_VARENTROPY_THRESHOLD: float,
+    HIGH_AGREEMENT_THRESHOLD: float,
+    HIGH_INTERACTION_STRENGTH_THRESHOLD: float,
 ) -> mx.array:
     batch_size, seq_length = sample.shape
     vocab_size = logits.shape[-1]
@@ -104,12 +110,12 @@ def score_sample(
 
     # Calculate confidence score
     confidence_scores = (
-        (1 - logits_entropy) * ADA_SCORE_LOGITS_ENT +
-        (1 - attention_entropy) * ADA_SCORE_ATT_ENT +
-        (1 - logits_varentropy) * ADA_SCORE_LOGITS_VAR +
-        (1 - attention_varentropy) * ADA_SCORE_ATT_VAR +
-        agreement * ADA_SCORE_AGREEMENT +
-        interaction_strength * ADA_SCORE_INTERACTION
+        (1 - logits_entropy / HIGH_LOGITS_ENTROPY_THRESHOLD) * ADA_SCORE_LOGITS_ENT +
+        (1 - attention_entropy / HIGH_ATTENTION_ENTROPY_THRESHOLD) * ADA_SCORE_ATT_ENT +
+        (1 - logits_varentropy / HIGH_LOGITS_VARENTROPY_THRESHOLD) * ADA_SCORE_LOGITS_VAR +
+        (1 - attention_varentropy / HIGH_ATTENTION_VARENTROPY_THRESHOLD) * ADA_SCORE_ATT_VAR +
+        agreement / HIGH_AGREEMENT_THRESHOLD * ADA_SCORE_AGREEMENT +
+        interaction_strength / HIGH_INTERACTION_STRENGTH_THRESHOLD * ADA_SCORE_INTERACTION
     )
 
     return log_probs + confidence_scores
@@ -121,12 +127,23 @@ def sample(
     ent, vent = metrics["logits_entropy"], metrics["logits_varentropy"]
     attention_entropy, attention_varentropy = metrics["attention_entropy"], metrics["attention_varentropy"]
     agreement, interaction_strength = metrics["agreement"], metrics["interaction_strength"]
+
     # Low Entropy, Low Varentropy: "flowing with unspoken intent"
-    if ent < cfg.low_ent_thresh and vent < cfg.low_vent_thresh:
+    if (ent < cfg.low_logits_entropy_threshold and
+        vent < cfg.low_logits_varentropy_threshold and
+        attention_entropy < cfg.low_attention_entropy_threshold and
+        attention_varentropy < cfg.low_attention_varentropy_threshold
+        and agreement > cfg.medium_agreement_threshold and
+        interaction_strength < cfg.low_interaction_strength_threshold):
         return mx.argmax(logits[:, -1], axis=-1, keepdims=True), metrics
 
     # High Entropy, Low Varentropy: "treading carefully, asking clarifying questions"
-    elif ent > cfg.med_ent_thresh and vent < cfg.low_vent_thresh:
+    elif (ent > cfg.medium_logits_entropy_threshold and
+        vent < cfg.medium_logits_varentropy_threshold and
+        attention_entropy < cfg.high_attention_entropy_threshold and
+        attention_varentropy < cfg.low_attention_varentropy_threshold and
+        agreement < cfg.medium_agreement_threshold and
+        interaction_strength < cfg.low_interaction_strength_threshold):
         #print("ε", flush = True, end = "")
         # Insert a clarifying question token if not already present
         if not mx.any(mx.equal(gen_tokens[:, -1], clarifying_question_token).any()):
@@ -135,27 +152,37 @@ def sample(
             ), metrics  # Assuming 2564 is our "ask clarifying question" token
         else:
             # If we've just asked a question, sample with slightly higher temperature
-            temp_adj = cfg.helv_attn_ent_offset + cfg.helv_attn_ent_coef * attention_entropy # Increase temperature
-            return _sample(logits, temperature=min(1.5, cfg.temp * temp_adj), top_p = cfg.top_p, top_k = cfg.top_k, min_p = cfg.min_p), metrics
+            temp_adj = cfg.high_entropy_attention_offset + cfg.high_entropy_varentropy_attention_coefficient * attention_entropy # Increase temperature
+            return _sample(logits, temperature=min(1.5, cfg.temperature * temp_adj), top_p = cfg.top_p, top_k = cfg.top_k, min_p = cfg.min_probability), metrics
 
     # Low Entropy, High Varentropy: "exploring forks in the path"
-    elif ent < cfg.med_ent_thresh and vent > cfg.high_vent_thresh:
+    elif (ent < cfg.high_logits_entropy_threshold and
+        vent > cfg.high_logits_varentropy_threshold and
+        attention_entropy < cfg.low_attention_entropy_threshold and
+        attention_varentropy > cfg.medium_attention_varentropy_threshold and
+        agreement < cfg.low_agreement_threshold and
+        interaction_strength > cfg.low_interaction_strength_threshold):
         #print("Ψ", flush = True, end = "")
         # TODO(xjdr): Implement proper branching logic
         # Return top-k tokens to allow for branching
         # top_k_values, top_k_indices = mx.top_k(logits[:, -1], k=top_k)
         # return top_k_indices
-        temp_adj = cfg.lehv_interaction_strength_offset + cfg.lehv_interaction_strength_coef * interaction_strength
+        temp_adj = cfg.low_entropy_interaction_strength_offset + cfg.low_entropy_interaction_strength_coefficient * interaction_strength
         top_k_adj = max(cfg.top_k, int(cfg.top_k * (1 + 0.5 * (1 - agreement))))
-        return _sample(logits, temperature=min(1.5, cfg.temp * temp_adj), top_p = cfg.top_p, top_k = top_k_adj, min_p = cfg.min_p), metrics
+        return _sample(logits, temperature=min(1.5, cfg.temperature * temp_adj), top_p = cfg.top_p, top_k = top_k_adj, min_p = cfg.min_probability), metrics
 
     # High Entropy, High Varentropy: "resampling in the mist"
-    elif ent > cfg.high_ent_thresh and vent > cfg.high_vent_thresh:
+    elif (ent > cfg.medium_logits_entropy_threshold and
+        vent > cfg.high_logits_varentropy_threshold and
+        attention_entropy > cfg.high_attention_entropy_threshold and
+        attention_varentropy > cfg.high_attention_varentropy_threshold and
+        agreement > cfg.high_agreement_threshold and
+        interaction_strength > cfg.high_interaction_strength_threshold):
         #print("!", flush = True, end = "")
         # Use high temperature and min_p sampling
-        temp_adj = cfg.hehv_attn_vent_offset + cfg.hehv_attn_vent_coef * attention_varentropy
-        top_p_adj = max(0.5, cfg.top_p - cfg.hehv_attn_ent_coef * attention_entropy)
-        return _sample(logits, temperature=max(2.0, cfg.temp * temp_adj), top_p = top_p_adj, top_k = cfg.top_k, min_p = cfg.min_p), metrics
+        temp_adj = cfg.high_entropy_varentropy_attention_offset + cfg.high_entropy_varentropy_attention_coefficient * attention_varentropy
+        top_p_adj = max(0.5, cfg.top_p - cfg.high_entropy_attention_coefficient * attention_entropy)
+        return _sample(logits, temperature=max(2.0, cfg.temperature * temp_adj), top_p = top_p_adj, top_k = cfg.top_k, min_p = cfg.min_probability), metrics
 
     # Middle ground: smooth transition
     else:
@@ -163,16 +190,16 @@ def sample(
         logits_uncertainty = metrics["logits_entropy"] + metrics["logits_varentropy"]
         attention_uncertainty = metrics["attention_entropy"] + metrics["attention_varentropy"]
 
-        temperature = cfg.temp * (1 + cfg.ada_temp_logits * logits_uncertainty + cfg.ada_temp_attn * attention_uncertainty - cfg.ada_temp_agree * agreement)
-        top_p = mx.clip(cfg.top_p * (1 + cfg.ada_top_p * attention_varentropy), 0.1, 1.0)
+        temperature = cfg.temperature * (1 + cfg.adaptive_temperature_logits_coefficient * ent + cfg.adaptive_temperature_attention_coefficient * attention_entropy - cfg.adaptive_temperature_agreement_coefficient * agreement)
+        top_p = mx.clip(cfg.top_p * (cfg.adaptive_top_p_coefficient * attention_varentropy), 0.1, 1.0)
         top_k = int(
             mx.clip(
-                mx.round(cfg.top_k * (1 + cfg.ada_top_k_int * interaction_strength.item() - cfg.ada_top_k_agree * agreement.item())),
+                mx.round(cfg.top_k * (0.6 + cfg.adaptive_top_k_interaction_coefficient * interaction_strength.item() - cfg.adaptive_top_k_agreement_coefficient * agreement.item())),
                 a_min = 1,
                 a_max = 100
             )
         )
-        min_p = mx.clip(cfg.min_p * (1 - cfg.ada_min_p * logits_uncertainty), 0.01, 0.5)
+        min_p = mx.clip(cfg.min_probability * (1 - cfg.adaptive_min_p_coefficient * logits_uncertainty), 0.01, 0.4)
 
         # Sample from the logits
         perturbed_logits = mx.repeat(logits, cfg.n_adaptive_samples, axis = 0)
@@ -189,12 +216,18 @@ def sample(
             attention_varentropy,
             agreement,
             interaction_strength,
-            cfg.ada_score_logits_ent,
-            cfg.ada_score_attn_ent,
-            cfg.ada_score_logits_vent,
-            cfg.ada_score_attn_vent,
-            cfg.ada_score_agree,
-            cfg.ada_score_int,
+            ADA_SCORE_LOGITS_ENT = cfg.adaptive_score_logits_entropy_coefficient,
+            ADA_SCORE_ATT_ENT = cfg.adaptive_score_attention_entropy_coefficient,
+            ADA_SCORE_LOGITS_VAR = cfg.adaptive_score_logits_varentropy_coefficient,
+            ADA_SCORE_ATT_VAR = cfg.adaptive_score_attention_varentropy_coefficient,
+            ADA_SCORE_AGREEMENT = cfg.adaptive_score_agreement_coefficient,
+            ADA_SCORE_INTERACTION = cfg.adaptive_score_interaction_strength_coefficient,
+            HIGH_LOGITS_ENTROPY_THRESHOLD = cfg.high_logits_entropy_threshold,
+            HIGH_ATTENTION_ENTROPY_THRESHOLD = cfg.high_attention_entropy_threshold,
+            HIGH_LOGITS_VARENTROPY_THRESHOLD = cfg.high_logits_varentropy_threshold,
+            HIGH_ATTENTION_VARENTROPY_THRESHOLD = cfg.high_attention_varentropy_threshold,
+            HIGH_AGREEMENT_THRESHOLD = cfg.high_agreement_threshold,
+            HIGH_INTERACTION_STRENGTH_THRESHOLD = cfg.high_interaction_strength_threshold,
         )
 
         best_sample_idx = mx.argmax(sample_scores)
