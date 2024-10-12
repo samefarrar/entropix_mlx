@@ -8,9 +8,12 @@ from typing import Union, Optional, Callable, Generator, List, Tuple, Dict
 from mlx_lm.sample_utils import top_p_sampling, min_p_sampling, categorical_sampling
 import time
 from mlx_sampler import sample
-from mlx_sampler import SamplerConfig
+from mlx_attention_sampler import SamplerConfig
+import numpy as np
 
 LN_2 = 0.69314718056  # ln(2)
+max_float32 = np.finfo(np.float32).max
+DEFAULT_MASK_VALUE = -0.7 * mx.array(max_float32, dtype=mx.float16)
 
 def generate_step(
     prompt: mx.array,
@@ -19,7 +22,7 @@ def generate_step(
     max_kv_size: Optional[int] = None,
     cache_history: Optional[List[Tuple[mx.array, mx.array]]] = None,
     sampler_config: SamplerConfig = SamplerConfig(),
-) -> Generator[mx.array, None, None]:
+) -> Generator[Tuple[mx.array, Dict[str, float]], None, None]:
     """
     A generator producing token ids based on the given prompt from the model.
 
@@ -65,24 +68,37 @@ def generate_step(
         mx.eval([c.state for c in cache])
 
     def _step(y):
-        logits, scores, attention_stats = model(y[None], cache=cache)
-        #logits = logits[:, -1, :]
-        y = sample(y, logits, scores, cfg = sampler_config)
-        return y
+        logits, scores, attention_stats = model(y, cache=cache)
+
+        # In the original xjdr repo, scores are calculated on un-masked logits.
+        # This means that in order for the scores to be comparable with xjdr thresholds,
+        # we need to calculate scores on un-masked logits.
+        # pad_length = model.max_seq_len - scores.shape[-1]
+        # pad_width = [
+        #     (0, 0),  # No padding on batch_size axis
+        #     (0, 0),  # No padding on num_heads axis
+        #     (0, 0),  # No padding on query_length axis
+        #     (0, pad_length)  # Pad 0 before and pad_length after the key_length axis
+        # ]
+        # padded_scores = mx.pad(scores, pad_width=pad_width)
+        y, metrics = sample(y, logits, scores, cfg = sampler_config) # Convert returned (bsz, 1) to (bsz, )
+        metrics = {k: v.item() for k, v in metrics.items()}
+        metrics["cur_pos"] = scores.shape[-1]
+        return y, metrics
 
     while y.size > prefill_step_size:
         model(y[:prefill_step_size][None], cache=cache)
         mx.eval([c.state for c in cache])
         y = y[prefill_step_size:]
 
-    y = _step(y)
+    y, metrics = _step(y[None])
 
     mx.async_eval(y)
     while True:
-        next_y = _step(y)
+        next_y, next_metrics = _step(y)
         mx.async_eval(next_y)
-        yield y.item()
-        y = next_y
+        yield (y.item(), metrics)
+        y, metrics = next_y, next_metrics
 
 def generate(
     model: nn.Module,
@@ -123,7 +139,7 @@ def generate(
 
     sampler_config = SamplerConfig()
 
-    for (token), n in zip(
+    for (token, metrics), n in zip(
         generate_step(prompt_tokens, model, sampler_config = sampler_config, **kwargs),
         range(max_tokens),
     ):

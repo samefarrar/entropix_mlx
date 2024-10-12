@@ -10,7 +10,6 @@ from mlx_lm.utils import generate as generate_mlx_lm
 from mlx_generate import generate
 from mlx_sampler import SamplerConfig
 from mlx_prompts import create_prompts_from_csv, prompt1, prompt2, prompt3, prompt4, prompt5, thinking_prompt, o1_claude_prompt
-import inspect
 from pathlib import Path
 
 def main():
@@ -18,6 +17,7 @@ def main():
     parser.add_argument("--prompts", action="store_true", help = "Use predefined prompts from mlx_entropix.prompts")
     parser.add_argument("--prompt_csv", action="store_true", help = "Use prompts from data/prompts.csv")
     parser.add_argument("--input", type = str, help = "Input prompt to generate text")
+    parser.add_argument("--weights_dir", type = str, help = "Directory containing the model weights", default = "weights/Llama-3.2-1B-Instruct")
     parser.add_argument("--entropix", action="store_true", default=True, help="Use Entropix model for generation")
     parser.add_argument("--normal", action="store_true", help="Use normal model for generation")
     args = parser.parse_args()
@@ -29,7 +29,7 @@ def main():
         exit()
 
     if args.normal:
-        model, tokenizer = load("weights/Llama-3.2-1B-Instruct")
+        model, tokenizer = load(args.weights_dir)
         model_with_scores = False
         sample_config_kwargs = SamplerConfig()
         sample_config_kwargs = {
@@ -38,20 +38,14 @@ def main():
             "min_p": sample_config_kwargs.min_p,
         }
     else:
-        path = Path("weights/Llama-3.2-1B-Instruct")
+        path = Path(args.weights_dir)
         tokenizer = load_tokenizer(path)
         model = load_entropix_model(path)
         model_with_scores = True
     max_tokens = 4096
 
     if args.input:
-        messages = [
-            {"role": "system", "content": thinking_prompt},
-            {"role": "user", "content": args.input}
-        ]
-        prompt = tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=False
-        )
+        prompt = thinking_prompt.format(query = args.input)
         if args.normal:
             response = generate_mlx_lm(model, tokenizer, prompt=prompt, verbose=True, max_tokens = max_tokens, **sample_config_kwargs)
         else:

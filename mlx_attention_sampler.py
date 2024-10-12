@@ -2,7 +2,6 @@ from pydantic import BaseModel
 class SamplerConfig(BaseModel):
     """
     Encapsulation of all available sampler hyperparameters.
-
     This should be a good starting point for baselining experiments.
     """
 
