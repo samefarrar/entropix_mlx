@@ -130,9 +130,7 @@ def sample(
 
     # Low Entropy, Low Varentropy: "flowing with unspoken intent"
     if (ent < cfg.low_logits_entropy_threshold and
-        vent < cfg.low_logits_varentropy_threshold and
-        attention_entropy < cfg.low_attention_entropy_threshold and
-        attention_varentropy < cfg.low_attention_varentropy_threshold
+        vent < cfg.low_logits_varentropy_threshold
         and agreement > cfg.medium_agreement_threshold and
         interaction_strength < cfg.low_interaction_strength_threshold):
         return mx.argmax(logits[:, -1], axis=-1, keepdims=True), metrics
@@ -140,8 +138,6 @@ def sample(
     # High Entropy, Low Varentropy: "treading carefully, asking clarifying questions"
     elif (ent > cfg.medium_logits_entropy_threshold and
         vent < cfg.medium_logits_varentropy_threshold and
-        attention_entropy < cfg.high_attention_entropy_threshold and
-        attention_varentropy < cfg.low_attention_varentropy_threshold and
         agreement < cfg.medium_agreement_threshold and
         interaction_strength < cfg.low_interaction_strength_threshold):
         #print("ε", flush = True, end = "")
@@ -175,8 +171,6 @@ def sample(
     elif (ent > cfg.medium_logits_entropy_threshold and
         vent > cfg.high_logits_varentropy_threshold and
         attention_entropy > cfg.high_attention_entropy_threshold and
-        attention_varentropy > cfg.high_attention_varentropy_threshold and
-        agreement > cfg.high_agreement_threshold and
         interaction_strength > cfg.high_interaction_strength_threshold):
         #print("!", flush = True, end = "")
         # Use high temperature and min_p sampling
