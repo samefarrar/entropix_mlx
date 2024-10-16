@@ -130,16 +130,12 @@ def sample(
 
     # Low Entropy, Low Varentropy: "flowing with unspoken intent"
     if (ent < cfg.low_logits_entropy_threshold and
-        vent < cfg.low_logits_varentropy_threshold
-        and agreement > cfg.medium_agreement_threshold and
-        interaction_strength < cfg.low_interaction_strength_threshold):
+        vent < cfg.low_logits_varentropy_threshold):
         return mx.argmax(logits[:, -1], axis=-1, keepdims=True), metrics
 
     # High Entropy, Low Varentropy: "treading carefully, asking clarifying questions"
-    elif (ent > cfg.medium_logits_entropy_threshold and
-        vent < cfg.medium_logits_varentropy_threshold and
-        agreement < cfg.medium_agreement_threshold and
-        interaction_strength < cfg.low_interaction_strength_threshold):
+    elif (ent > cfg.high_logits_entropy_threshold and
+        vent < cfg.low_logits_varentropy_threshold):
         #print("ε", flush = True, end = "")
         # Insert a clarifying question token if not already present
         if not mx.any(mx.equal(gen_tokens[:, -1], clarifying_question_token).any()):
@@ -152,12 +148,10 @@ def sample(
             return _sample(logits, temperature=min(1.5, cfg.temperature * temp_adj), top_p = cfg.top_p, top_k = cfg.top_k, min_p = cfg.min_probability), metrics
 
     # Low Entropy, High Varentropy: "exploring forks in the path"
-    elif (ent < cfg.high_logits_entropy_threshold and
+    elif (ent < cfg.low_logits_entropy_threshold and
         vent > cfg.high_logits_varentropy_threshold and
-        attention_entropy < cfg.low_attention_entropy_threshold and
-        attention_varentropy > cfg.medium_attention_varentropy_threshold and
-        agreement < cfg.low_agreement_threshold and
-        interaction_strength > cfg.low_interaction_strength_threshold):
+        attention_entropy > cfg.low_attention_entropy_threshold and
+        attention_varentropy < cfg.medium_attention_varentropy_threshold):
         #print("Ψ", flush = True, end = "")
         # TODO(xjdr): Implement proper branching logic
         # Return top-k tokens to allow for branching
@@ -168,10 +162,9 @@ def sample(
         return _sample(logits, temperature=min(1.5, cfg.temperature * temp_adj), top_p = cfg.top_p, top_k = top_k_adj, min_p = cfg.min_probability), metrics
 
     # High Entropy, High Varentropy: "resampling in the mist"
-    elif (ent > cfg.medium_logits_entropy_threshold and
+    elif (ent > cfg.high_logits_entropy_threshold and
         vent > cfg.high_logits_varentropy_threshold and
-        attention_entropy > cfg.high_attention_entropy_threshold and
-        interaction_strength > cfg.high_interaction_strength_threshold):
+        attention_entropy > cfg.high_attention_entropy_threshold):
         #print("!", flush = True, end = "")
         # Use high temperature and min_p sampling
         temp_adj = cfg.high_entropy_varentropy_attention_offset + cfg.high_entropy_varentropy_attention_coefficient * attention_varentropy

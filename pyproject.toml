@@ -23,6 +23,7 @@ dependencies = [
     "torch>=2.4.1",
     "transformers>=4.45.1",
     "tyro>=0.8.11",
+    "lm-eval[api]>=0.4.5",
 ]
 
 [tool.pyright]

@@ -53,7 +53,7 @@ class SamplerConfig(BaseModel):
 
     # TODO not convinced this should
     n_adaptive_samples: int = 5
-    ada_noise_scale: float = 0.33
+    ada_noise_scale: float = 1.0 / 7.0
 
     # Adaptive sampling parameters
     adaptive_temperature_logits_coefficient: float = 0.2
