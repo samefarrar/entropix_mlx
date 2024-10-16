@@ -13,7 +13,7 @@ dependencies = [
     "jax>=0.4.34",
     "ml-dtypes>=0.5.0",
     "mlx>=0.18.0",
-    "mlx-lm>=0.19.0",
+    "mlx-lm==0.18.2",
     "pydantic>=2.9.2",
     "pytest>=8.3.3",
     "rich>=13.9.2",
