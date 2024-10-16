@@ -1,6 +1,6 @@
 import mlx.nn as nn
 import mlx.core as mx
-from mlx_lm.models.base import KVCache, RotatingKVCache
+from mlx_lm.models.cache import KVCache, RotatingKVCache
 from mlx_lm.models.llama import Attention, Model, LlamaModel, TransformerBlock, ModelArgs, create_attention_mask
 from mlx_lm.utils import load_config, _get_classes
 from mlx_lm import load

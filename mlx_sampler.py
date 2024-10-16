@@ -1,4 +1,4 @@
-from mlx_lm.utils import make_kv_caches
+from mlx_lm.models.cache import make_prompt_cache
 import mlx.core as mx
 import mlx.nn as nn
 from typing import Optional, List, Tuple, Union, Dict
