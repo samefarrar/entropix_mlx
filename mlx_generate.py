@@ -1,6 +1,6 @@
-from mlx_lm.utils import apply_repetition_penalty, make_kv_caches
+from mlx_lm.utils import apply_repetition_penalty
 from mlx_lm.tokenizer_utils import TokenizerWrapper
-from mlx_lm.models.base import KVCache, RotatingKVCache
+from mlx_lm.models.cache import KVCache, RotatingKVCache, make_prompt_cache
 import mlx.core as mx
 import mlx.nn as nn
 from transformers import PreTrainedTokenizer
@@ -55,7 +55,7 @@ def generate_step(
     tokens = None
 
     # Create the KV cache for generation
-    cache = make_kv_caches(model, max_kv_size)
+    cache = make_prompt_cache(model, max_kv_size)
 
     if cache_history is not None:
         if len(cache_history) != len(cache):
