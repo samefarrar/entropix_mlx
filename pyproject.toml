@@ -24,6 +24,7 @@ dependencies = [
     "transformers>=4.45.1",
     "tyro>=0.8.11",
     "lm-eval[api]>=0.4.5",
+    "accelerate>=1.0.1",
 ]
 
 [tool.pyright]
