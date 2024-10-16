@@ -62,6 +62,7 @@ class EntropixAPIHandler(APIHandler):
         metrics_list = []
         finish_reason = "length"
         stop_sequence_suffix = None
+        prompt = mx.array(prompt)
 
         logging.debug(f"Starting completion:")
         for (token, metrics), _ in zip(
@@ -131,6 +132,7 @@ class EntropixAPIHandler(APIHandler):
         metrics_list = []
 
         stop_sequence_suffix = None
+        prompt = mx.array(prompt)
 
         logging.debug(f"Starting stream:")
 
