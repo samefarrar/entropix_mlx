@@ -11,6 +11,7 @@ class SamplerConfig(BaseModel):
     top_p: float = 0.90
     top_k: int = 36
     min_probability: float = 0.03  # Turn this down to 0.01 to reduce the shoggoth
+    epsilon: float = 0.01
 
     # Logits entropy thresholds
     low_logits_entropy_threshold: float = 0.004

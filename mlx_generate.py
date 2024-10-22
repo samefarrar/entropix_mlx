@@ -7,7 +7,7 @@ from transformers import PreTrainedTokenizer
 from typing import Union, Optional, Callable, Generator, List, Tuple, Dict
 from mlx_lm.sample_utils import top_p_sampling, min_p_sampling, categorical_sampling
 import time
-from mlx_sampler import sample
+from mlx_sampler import new_sample
 from mlx_attention_sampler import SamplerConfig
 import numpy as np
 
@@ -81,7 +81,7 @@ def generate_step(
         #     (0, pad_length)  # Pad 0 before and pad_length after the key_length axis
         # ]
         # padded_scores = mx.pad(scores, pad_width=pad_width)
-        y, metrics = sample(y, logits, scores, cfg = sampler_config, key=key) # Convert returned (bsz, 1) to (bsz, )
+        y, metrics = new_sample(logits, scores, key=key) # Convert returned (bsz, 1) to (bsz, )
         metrics = {k: v.item() for k, v in metrics.items()}
         metrics["cur_pos"] = scores.shape[-1]
         return y, metrics
@@ -91,7 +91,9 @@ def generate_step(
         mx.eval([c.state for c in cache])
         y = y[prefill_step_size:]
 
-    y, metrics = _step(y[None])
+    model_call, _, _ = model(y[None], cache=cache)
+    y = mx.argmax(model_call[:, -1], axis=-1, keepdims=True)
+    metrics = {"cur_pos": 1}
 
     mx.async_eval(y)
     while True:
