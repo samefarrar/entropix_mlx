@@ -91,7 +91,6 @@ def generate_step(
         mx.eval([c.state for c in cache])
         y = y[prefill_step_size:]
 
-    print(f"Pre first step y: {y[:5]}, with shape: {y.shape}")
     y, metrics = _step(y[None])
 
     mx.async_eval(y)

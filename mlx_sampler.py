@@ -51,7 +51,6 @@ def _sample(
     top_p=0.9,
     top_k: int = 27,
     min_p: float = 0.0,
-    min_tokens_to_keep: int = 2,
     key=mx.random.key(1337),
 ) -> mx.array:
     batch_size = logits.shape[0]
@@ -74,9 +73,6 @@ def _sample(
         min_p_mask = (
             sorted_probs > scaled_min_p[..., None]
         )  # e.g. (bsz * [True, False, False, False, False, ...])
-        min_p_mask[..., :min_tokens_to_keep] = (
-            True  # Keep at least min_tokens_to_keep tokens, e.g. (bsz * [True, True, True, False, False, ...])
-        )
         sorted_probs = mx.where(
             min_p_mask, sorted_probs, 0.0
         )  # e.g. (bsz * [0.9, 0.0, 0.0, 0.0, 0.0, ...])
@@ -90,9 +86,6 @@ def _sample(
         cumulative_probs <= top_p
     )  # e.g. (bsz * [True, True, True, True, True, ...]
     # or, if min_p is applied, (bsz * [True, False, False, False, False, ...]
-    top_p_mask[..., :min_tokens_to_keep] = (
-        True  # Keep at least min_tokens_to_keep tokens, e.g. (bsz * [True, True, True, False, False, ...])
-    )
     sorted_probs = mx.where(
         top_p_mask, sorted_probs, 0.0
     )  # e.g. (bsz * [0.9, 0.05, 0.02, 0.01, 0.01, ...])
@@ -114,24 +107,6 @@ def _sample(
 def score_sample(
     sample: mx.array,
     logits: mx.array,
-    logits_entropy: float,
-    attention_entropy: float,
-    logits_varentropy: float,
-    attention_varentropy: float,
-    agreement: float,
-    interaction_strength: float,
-    ADA_SCORE_LOGITS_ENT: float,
-    ADA_SCORE_ATT_ENT: float,
-    ADA_SCORE_LOGITS_VAR: float,
-    ADA_SCORE_ATT_VAR: float,
-    ADA_SCORE_AGREEMENT: float,
-    ADA_SCORE_INTERACTION: float,
-    HIGH_LOGITS_ENTROPY_THRESHOLD: float,
-    HIGH_LOGITS_VARENTROPY_THRESHOLD: float,
-    HIGH_ATTENTION_ENTROPY_THRESHOLD: float,
-    HIGH_ATTENTION_VARENTROPY_THRESHOLD: float,
-    HIGH_AGREEMENT_THRESHOLD: float,
-    HIGH_INTERACTION_STRENGTH_THRESHOLD: float,
 ) -> mx.array:
     batch_size, seq_length = sample.shape
     vocab_size = logits.shape[-1]
@@ -145,21 +120,7 @@ def score_sample(
         mx.softmax(logits[:, -1], axis=-1).log()[:, None, :] * one_hot, axis=(1, 2)
     )
 
-    # Calculate confidence score
-    confidence_scores = (
-        (1 - logits_entropy / HIGH_LOGITS_ENTROPY_THRESHOLD) * ADA_SCORE_LOGITS_ENT
-        + (1 - attention_entropy / HIGH_ATTENTION_ENTROPY_THRESHOLD) * ADA_SCORE_ATT_ENT
-        + (1 - logits_varentropy / HIGH_LOGITS_VARENTROPY_THRESHOLD)
-        * ADA_SCORE_LOGITS_VAR
-        + (1 - attention_varentropy / HIGH_ATTENTION_VARENTROPY_THRESHOLD)
-        * ADA_SCORE_ATT_VAR
-        + agreement / HIGH_AGREEMENT_THRESHOLD * ADA_SCORE_AGREEMENT
-        + interaction_strength
-        / HIGH_INTERACTION_STRENGTH_THRESHOLD
-        * ADA_SCORE_INTERACTION
-    )
-
-    return log_probs + confidence_scores
+    return log_probs
 
 
 def sample(
@@ -302,40 +263,11 @@ def sample(
             0.4,
         )
 
-        # Sample from the logits
-        perturbed_logits = mx.repeat(logits, cfg.n_adaptive_samples, axis=0)
-        gumbel_noise = mx.random.gumbel(perturbed_logits.shape) * cfg.ada_noise_scale
-        perturbed_logits = perturbed_logits + gumbel_noise
-        samples = _sample(
-            perturbed_logits,
+        return _sample(
+            logits,
             temperature=temperature,
             top_p=top_p,
             top_k=top_k,
             min_p=min_p,
-        )
-
-        sample_scores = score_sample(
-            samples,
-            perturbed_logits,
-            ent,
-            attention_entropy,
-            vent,
-            attention_varentropy,
-            agreement,
-            interaction_strength,
-            ADA_SCORE_LOGITS_ENT=cfg.adaptive_score_logits_entropy_coefficient,
-            ADA_SCORE_ATT_ENT=cfg.adaptive_score_attention_entropy_coefficient,
-            ADA_SCORE_LOGITS_VAR=cfg.adaptive_score_logits_varentropy_coefficient,
-            ADA_SCORE_ATT_VAR=cfg.adaptive_score_attention_varentropy_coefficient,
-            ADA_SCORE_AGREEMENT=cfg.adaptive_score_agreement_coefficient,
-            ADA_SCORE_INTERACTION=cfg.adaptive_score_interaction_strength_coefficient,
-            HIGH_LOGITS_ENTROPY_THRESHOLD=cfg.high_logits_entropy_threshold,
-            HIGH_ATTENTION_ENTROPY_THRESHOLD=cfg.high_attention_entropy_threshold,
-            HIGH_LOGITS_VARENTROPY_THRESHOLD=cfg.high_logits_varentropy_threshold,
-            HIGH_ATTENTION_VARENTROPY_THRESHOLD=cfg.high_attention_varentropy_threshold,
-            HIGH_AGREEMENT_THRESHOLD=cfg.high_agreement_threshold,
-            HIGH_INTERACTION_STRENGTH_THRESHOLD=cfg.high_interaction_strength_threshold,
-        )
-
-        best_sample_idx = mx.argmax(mx.array(sample_scores)).item()
-        return samples[best_sample_idx], metrics
+            key=keys,
+        ), metrics

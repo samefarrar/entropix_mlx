@@ -93,7 +93,6 @@ class EntropyLlamaModel(LlamaModel):
         if cache is None:
             cache = [None] * len(self.layers)
 
-        print(f"Inside model inputs: {h[:5]}, with shape: {h.shape}")
         for i, (layer, c) in enumerate(zip(self.layers, cache)):
             h, scores = layer(h, mask, cache=c) # at output this should be (1, 32, 1, 4096)
             # with max in range: ~5, min in range: ~-19 and mean value ~-0.18
@@ -112,7 +111,6 @@ class EntropixModel(Model):
         inputs: mx.array,
         cache=None,
     ):
-        print(f"Inside model inputs: {inputs[:5]}, with shape: {inputs.shape}")
         out, scores, attention_stats = self.model(inputs, cache)
         if self.args.tie_word_embeddings:
             out = self.model.embed_tokens.as_linear(out)
