@@ -1,8 +1,8 @@
 from typing import Dict, Tuple
 
-import chex
 import jax
 import jax.numpy as jnp
+
 
 LN_2 = 0.69314718056  # ln(2) = 1.0 / LOG2_E
 
@@ -15,36 +15,70 @@ def calculate_varentropy_logsoftmax(logits: jnp.ndarray, axis: int = -1) -> Tupl
     varentropy = jnp.sum(probs * (log_probs / LN_2 + entropy[..., None])**2, axis=axis)
     return entropy, varentropy
 
+@jax.jit
 def multinomial_sample_one(probs_sort: jax.Array, key) -> jax.Array:
     """Samples one token from a multinomial distribution with sorted probabilities."""
     q = jax.random.exponential(key=key, shape=probs_sort.shape)
     return jnp.argmax(probs_sort / q, axis=-1, keepdims=True).astype(jnp.int32)
 
-def _sample( logits: jax.Array, *, temperature: float | jax.Array, top_p: float | jax.Array, top_k: int | jax.Array, min_p: float | jax.Array,
-            key=jax.random.PRNGKey(1337),) -> jax.Array:
+@jax.jit
+def adaptive_sample(logits: jax.Array, *, temperature: float | jax.Array, key=jax.random.PRNGKey(1337), epsilon: float = 0.01) -> jax.Array:
+    """
+    Perform adaptive sampling by dynamically adjusting the candidate set size based on entropy and varentropy.
+    """
     bsz = logits.shape[0]
     logit = logits[:, -1]
     probs = jax.nn.softmax(logit / temperature, axis=-1)
 
-    # Apply min_p sampling
-    if min_p > 0.0:
-      p_max = jnp.max(probs, axis=-1, keepdims=True)
-      indices_to_remove = probs < (min_p * p_max)
-      logit = jnp.where(indices_to_remove, jnp.full_like(logit, float('-inf')), logit)
+    # Sort tokens by probability
+    sorted_probs, sorted_indices = jax.lax.top_k(probs, k=probs.shape[-1])
 
-    # Apply top-k sampling
-    top_k_probs, top_k_indices = jax.lax.top_k(probs, k=top_k)
-    probs_sort = jnp.flip(top_k_probs, axis=-1)
-    probs_idx = jnp.flip(top_k_indices, axis=-1)
-    probs_sum = jnp.cumsum(probs_sort, axis=-1)
-    # Apply top-p sampling
-    mask = jnp.where(probs_sum - probs_sort > top_p, 1.0, 0.0)
-    probs_sort = probs_sort * (1 - mask)
-    probs_sort = probs_sort / jnp.sum(probs_sort, axis=-1, keepdims=True)
-    next_token = multinomial_sample_one(probs_sort, key)
-    next_token_g = jnp.take_along_axis(probs_idx, next_token.reshape(bsz, 1), axis=-1)
+    # Initialize candidate set size
+    candidate_mask = jnp.zeros_like(sorted_probs, dtype=bool)  # To track which tokens are in the candidate set
+    cumulative_entropy = jnp.zeros((bsz,))
+    cumulative_varentropy = jnp.zeros((bsz,))
+    previous_entropy = -jnp.sum(sorted_probs[0] * jnp.log2(jnp.clip(sorted_probs[0], 1e-10, 1.0)))
+
+    def cond_fn(state):
+        # Continue if entropy reduction is greater than epsilon
+        cumulative_entropy, cumulative_varentropy, i, mask = state
+        entropy_reduction = cumulative_entropy - previous_entropy
+        return (entropy_reduction >= epsilon) & (i < sorted_probs.shape[-1])
+
+    def body_fn(state):
+        cumulative_entropy, cumulative_varentropy, i, mask = state
+        current_prob = sorted_probs[:, i]
+
+        # Update entropy and varentropy with current token
+        current_entropy = -jnp.sum(current_prob * jnp.log2(jnp.clip(current_prob, 1e-10, 1.0)))
+        current_varentropy = jnp.sum(current_prob * (jnp.log2(jnp.clip(current_prob, 1e-10, 1.0)) + cumulative_entropy[:, None])**2)
+
+        entropy_reduction = cumulative_entropy - current_entropy
+        varentropy_reduction = cumulative_varentropy - current_varentropy
+
+        # Update cumulative entropy, varentropy, and mask if reductions are sufficient
+        mask = jnp.where(entropy_reduction >= epsilon, mask.at[:, i].set(True), mask)
+
+        cumulative_entropy = cumulative_entropy.at[:, i].set(current_entropy)
+        cumulative_varentropy = cumulative_varentropy.at[:, i].set(current_varentropy)
+
+        return cumulative_entropy, cumulative_varentropy, i + 1, mask
+
+    initial_state = (cumulative_entropy, cumulative_varentropy, 0, candidate_mask)
+    final_state = jax.lax.while_loop(cond_fn, body_fn, initial_state)
+
+    # Mask out tokens not in the candidate set
+    final_mask = final_state[-1]
+    candidate_probs = sorted_probs * final_mask
+    candidate_probs = candidate_probs / jnp.sum(candidate_probs, axis=-1, keepdims=True)
+
+    # Sample from the final candidate set
+    next_token = multinomial_sample_one(candidate_probs, key)
+    next_token_g = jnp.take_along_axis(sorted_indices, next_token.reshape(bsz, 1), axis=-1)
+
     return next_token_g.astype(jnp.int32)
 
+@jax.jit
 def calculate_metrics(logits: jnp.ndarray, attention_scores: jnp.ndarray) -> Dict[str, jnp.ndarray]:
     entropy, varentropy = calculate_varentropy_logsoftmax(logits)
 
@@ -66,57 +100,8 @@ def calculate_metrics(logits: jnp.ndarray, attention_scores: jnp.ndarray) -> Dic
         "interaction_strength": interaction_strength
     }
 
-@chex.dataclass(kw_only=True, frozen=True)
-class SamplerConfig:
-    """
-    Encapsulation of all available sampler hyperparameters.
-
-    This should be a good starting point for baselining experiments.
-    """
-
-    temp: float = 0.666
-    top_p: float = 0.90
-    top_k: int = 27
-    min_p: float = 0.03  # Turn this down to 0.01 to reduce the shoggoth
-
-    low_ent_thresh: float = 0.1
-    low_vent_thresh: float = 0.1
-    med_ent_thresh: float = 3.0
-    high_ent_thresh: float = 5.0
-    high_vent_thresh: float = 5.0
-
-    # TODO this is a bit of a nasty mess, but also makes all the hyperparameters visible
-    helv_attn_ent_offset: float = 1.3
-    helv_attn_ent_coef: float = 0.2
-
-    lehv_interaction_strength_offset: float = 1.2
-    lehv_interaction_strength_coef: float = 0.3
-
-    hehv_attn_ent_coef: float = 0.2
-    hehv_attn_vent_offset: float = 2.0
-    hehv_attn_vent_coef: float = 0.5
-
-    # TODO not convinced this should
-    n_adaptive_samples: int = 5
-
-    # Adaptive sampling parameters
-    ada_temp_logits: float = 0.3
-    ada_temp_attn: float = 0.2
-    ada_temp_agree: float = 0.2
-    ada_top_p: float = 0.1
-    ada_top_k_int: float = 0.3
-    ada_top_k_agree: float = 0.2
-    ada_min_p: float = 0.5
-    ada_score_logits_ent: float = 0.1
-    ada_score_attn_ent: float = 0.2
-    ada_score_logits_vent: float = 0.3
-    ada_score_attn_vent: float = 0.4
-    ada_score_agree: float = 0.5
-    ada_score_int: float = 0.6
-
-
-def sample(gen_tokens: jax.Array, logits: jax.Array, attention_scores: jax.Array, cfg: SamplerConfig,
-           clarifying_question_token: int = 2564, key=jax.random.PRNGKey(1337)) -> jax.Array:
+@jax.jit
+def new_sample(logits: jax.Array, attention_scores: jax.Array, cur_pos: int, key=jax.random.PRNGKey(1337)) -> jax.Array:
 
     metrics = calculate_metrics(logits, attention_scores)
     ent, vent = metrics["logits_entropy"], metrics["logits_varentropy"]
@@ -124,66 +109,38 @@ def sample(gen_tokens: jax.Array, logits: jax.Array, attention_scores: jax.Array
     agreement = metrics["agreement"]
     interaction_strength = metrics["interaction_strength"]
 
-    # Low Entropy, Low Varentropy: "flowing with unspoken intent"
-    if ent < cfg.low_ent_thresh and vent < cfg.low_vent_thresh:
-        return jnp.argmax(logits[:, -1], axis=-1, keepdims=True).astype(jnp.int32)
+    return adaptive_sample(
+            logits,
+            temperature=0.666,
+            key=key,
+            epsilon=0.1  # Confidence threshold for adaptive decoding
+        )
 
-    # High Entropy, Low Varentropy: "treading carefully, asking clarifying questions"
-    elif ent > cfg.high_ent_thresh and vent < cfg.low_vent_thresh:
-        # Insert a clarifying question token if not already present
-        if not jnp.isin(gen_tokens[:,-1], clarifying_question_token).any():
-            return jnp.array([[clarifying_question_token]])
-        else:
-            # If we've just asked a question, sample with slightly higher temperature
-            temp_adj = cfg.helv_attn_ent_offset + cfg.helv_attn_ent_coef * attn_ent  # Increase temperature based on attention entropy
-            return _sample(logits, temperature=min(1.5, cfg.temp * temp_adj), top_p=cfg.top_p, top_k=cfg.top_k, min_p=cfg.min_p, key=key)
+def multinomial_sample_one(probs_sort: jax.Array, key=jax.random.PRNGKey(1337)) -> jax.Array:
+  """Samples one token from a multinomial distribution with sorted probabilities."""
+  q = jax.random.exponential(key=key, shape=probs_sort.shape)
+  return jnp.argmax(probs_sort / q, axis=-1, keepdims=True).astype(jnp.int32)
 
-    # Low Entropy, High Varentropy: "exploring forks in the path"
-    elif ent < cfg.high_ent_thresh and vent > cfg.high_vent_thresh:
-        temp_adj = cfg.lehv_interaction_strength_offset + cfg.lehv_interaction_strength_coef * interaction_strength  # Increase temperature based on interaction strength
-        top_k_adj = max(5, int(cfg.top_k * (1 + 0.5 * (1 - agreement))))  # Increase top_k when agreement is low
-        return _sample(logits, temperature=min(1.5, cfg.temp * temp_adj), top_p=cfg.top_p, top_k=top_k_adj, min_p=cfg.min_p, key=key)
 
-    # High Entropy, High Varentropy: "resampling in the mist"
-    elif ent > cfg.med_ent_thresh and vent > cfg.high_vent_thresh:
-        # Use high temperature and adjusted top_p based on attention metrics
-        temp_adj = cfg.hehv_attn_vent_offset + cfg.hehv_attn_vent_coef * attn_vent  # Increase temperature based on attention varentropy
-        top_p_adj = max(0.5, cfg.top_p - cfg.hehv_attn_ent_coef * attn_ent)  # Decrease top_p when attention entropy is high
-        return _sample(logits, temperature=max(2.0, cfg.temp * temp_adj), top_p=top_p_adj, top_k=cfg.top_k, min_p=cfg.min_p, key=key)
+# TODO: change this to support batch settings for temperature, top_p, and top_k
+# def sample(tokens: jax.Array, logits: jax.Array, temperature=0.666, top_p=0.90, top_k=27, key = jax.random.PRNGKey(1337)) -> jax.Array:
+def sample(logits: jax.Array, temperature=0.666, top_p=0.90, top_k=27, key=jax.random.PRNGKey(1337)) -> jax.Array:
+  bsz = logits.shape[0]
+  logit = logits[:, -1]
+  probs = jax.nn.softmax(logit / temperature, axis=-1)
 
-    # Middle ground: use adaptive sampling
-    else:
-        logits_uncertainty = metrics["logits_entropy"] + metrics["logits_varentropy"]
-        attn_uncertainty = metrics["attn_entropy"] + metrics["attn_varentropy"]
 
-        temperature = cfg.temp * (1 + cfg.ada_temp_logits * logits_uncertainty + cfg.ada_temp_attn * attn_uncertainty - cfg.ada_temp_agree * metrics["agreement"])
-        top_p = jnp.clip(cfg.top_p * (1 + cfg.ada_top_p * metrics["attn_varentropy"]), 0.1, 1.0)
-        top_k = int(jnp.clip(
-            jnp.round(cfg.top_k * (1 + cfg.ada_top_k_int * metrics["interaction_strength"].item() - cfg.ada_top_k_agree * metrics["agreement"].item())),
-            a_min=1,
-            a_max=100
-        ))
-        min_p = jnp.clip(cfg.min_p * (1 - cfg.ada_min_p * logits_uncertainty), 0.01, 0.5)
+  # Apply top-k sampling
+  top_k_probs, top_k_indices = jax.lax.top_k(probs, k=top_k)
+  probs_sort_jax = jnp.flip(top_k_probs, axis=-1)
+  probs_idx_jax = jnp.flip(top_k_indices, axis=-1)
+  probs_sum_jax = jnp.cumsum(probs_sort_jax, axis=-1)
 
-        keys = jax.random.split(key, cfg.n_adaptive_samples)
+  # Apply top-p sampling
+  mask_jax = jnp.where(probs_sum_jax - probs_sort_jax > top_p, True, False)  # Use jnp.where
+  probs_sort_jax = probs_sort_jax * (1 - mask_jax)  # Set values to 0.0 using multiplication
+  probs_sort_jax = probs_sort_jax / jnp.sum(probs_sort_jax, axis=-1, keepdims=True)
 
-        samples = []
-        for sample_key in keys:
-            sample = _sample(logits, temperature=temperature, top_p=top_p, top_k=top_k, min_p=min_p, key=sample_key)
-            samples.append(sample)
-
-        def score_sample(sample):
-            log_prob = jnp.sum(jax.nn.log_softmax(logits) * jax.nn.one_hot(sample, logits.shape[-1]))
-            confidence_score = (
-                (1 - metrics["logits_entropy"]) * cfg.ada_score_logits_ent +
-                (1 - metrics["attn_entropy"]) * cfg.ada_score_attn_ent +
-                (1 - metrics["logits_varentropy"]) * cfg.ada_score_logits_vent +
-                (1 - metrics["attn_varentropy"]) * cfg.ada_score_attn_vent +
-                metrics["agreement"] * cfg.ada_score_agree +
-                metrics["interaction_strength"] * cfg.ada_score_int
-            )
-            return log_prob + confidence_score
-
-        sample_scores = [score_sample(sample) for sample in samples]
-        best_sample_idx = jnp.argmax(jnp.array(sample_scores))
-        return samples[best_sample_idx]
+  next_token_jax = multinomial_sample_one(probs_sort_jax, key)
+  next_token_g_jax = jnp.take_along_axis(probs_idx_jax, next_token_jax.reshape(bsz, 1), axis=-1)
+  return next_token_g_jax.astype(jnp.int32)
