@@ -1,4 +1,5 @@
 import mlx.core as mx
+import mlx.nn as nn
 
 from mlx_attention_sampler import SamplerConfig
 from typing import Union
@@ -11,7 +12,7 @@ def calculate_varentropy_logsoftmax(
     logits: mx.array, axis: int = -1
 ) -> tuple[mx.array, mx.array]:
     """Calculate the entropy and varentropy of the probability distribution using logsoftmax."""
-    log_probs = mx.softmax(logits, axis=axis).log()
+    log_probs = nn.log_softmax(logits, axis = axis)
     probs = mx.exp(log_probs)
     entropy = -mx.sum(probs * log_probs, axis=axis) / LN_2  # Convert to base-2
     varentropy = mx.sum(probs * (log_probs / LN_2 + entropy[..., None]) ** 2, axis=axis)
@@ -55,6 +56,7 @@ def _sample(
     key: Union[mx.array, None] = None,
 ) -> mx.array:
     batch_size = logits.shape[0]
+    #print(f"t({temperature.item()}), top_p({top_p.item()}), top_k({top_k}), min_p({min_p.item()})")
     logit = logits[:, -1] / temperature  # (batch_size, vocab_size)
 
     # Calculate probabilities by softmaxing the temparature-scaled logits
@@ -84,8 +86,10 @@ def _sample(
     # Optionally apply top_k sampling
     sorted_probs[..., top_k:] = 0.0  # e.g. (bsz * [0.9, 0.05, 0.0, 0.0, 0.0, ...])
 
+    sorted_probs = sorted_probs / mx.sum(sorted_probs, axis = -1)
+
     # Sample token
-    sorted_token = mx.random.categorical(mx.log(sorted_probs), key=key)[
+    sorted_token = mx.random.categorical(mx.log(sorted_probs / (1 - sorted_probs)), key=key)[
         ..., None
     ]  # e.g. (bsz * [1390, 3, 2791, 1381, 12476, ...])
     token = mx.take_along_axis(
@@ -231,8 +235,8 @@ def sample(
             + cfg.adaptive_temperature_attention_coefficient * attention_entropy
             - cfg.adaptive_temperature_agreement_coefficient * agreement
         ),
-        0,
-        2.3)
+        0.0,
+        2.0)
         top_p = mx.clip(
             cfg.top_p * (1 - cfg.adaptive_top_p_coefficient * attention_varentropy),
             0.6,

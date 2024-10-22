@@ -8,8 +8,8 @@ class SamplerConfig(BaseModel):
     """
 
     temperature: float = 0.666
-    top_p: float = 1.0
-    top_k: int = 40
+    top_p: float = 0.90
+    top_k: int = 36
     min_probability: float = 0.03  # Turn this down to 0.01 to reduce the shoggoth
 
     # Logits entropy thresholds
@@ -58,7 +58,7 @@ class SamplerConfig(BaseModel):
     adaptive_temperature_logits_coefficient: float = 0.65
     adaptive_temperature_attention_coefficient: float = 0.2
     adaptive_temperature_agreement_coefficient: float = 200
-    adaptive_top_p_coefficient: float = 0.08
+    adaptive_top_p_coefficient: float = 0.01
     adaptive_top_k_coefficient: float = 0.1
     adaptive_top_k_interaction_coefficient: float = 0.10
     adaptive_top_k_agreement_coefficient: float = 18
