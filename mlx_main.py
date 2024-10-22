@@ -53,6 +53,12 @@ def main():
         help="Prefill the assistant response with a specific string",
         default=None,
     )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        help="Seed for random number generator",
+        default=None,
+    )
     args = parser.parse_args()
 
     if not args.prompts and not args.input and not args.prompt_csv:
@@ -93,7 +99,7 @@ def main():
             )
         else:
             response = generate(
-                model, tokenizer, prompt=prompt, verbose=True, max_tokens=max_tokens
+                model, tokenizer, prompt=prompt, verbose=True, max_tokens=max_tokens, seed=args.seed
             )
     elif args.prompt_csv:
         prompts = create_prompts_from_csv("data/prompts.csv")
@@ -112,7 +118,7 @@ def main():
                 )
             else:
                 response = generate(
-                    model, tokenizer, prompt=prompt, verbose=True, max_tokens=max_tokens
+                    model, tokenizer, prompt=prompt, verbose=True, max_tokens=max_tokens, seed=args.seed
                 )
     elif args.prompts:
         prompts = [prompt1, prompt2, prompt3, prompt4, prompt5]
@@ -129,7 +135,7 @@ def main():
                 )
             else:
                 response = generate(
-                    model, tokenizer, prompt=prompt, verbose=True, max_tokens=max_tokens
+                    model, tokenizer, prompt=prompt, verbose=True, max_tokens=max_tokens, seed=args.seed
                 )
 
 

@@ -5,7 +5,9 @@ def handle_chat_template(
     input: str | list[dict], tokenizer, prefill: str | None = None
 ) -> str:
     if isinstance(input, str):
-        input = [{"role": "user", "content": input}]
+        input = [
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": input}]
     elif not isinstance(input, list):
         raise ValueError("Invalid input type. Expected str or list[dict].")
     continue_final = False
@@ -17,7 +19,7 @@ def handle_chat_template(
     return tokenizer.apply_chat_template(
         input,
         tokenize=False,
-        add_generation_prompt=False,
+        add_generation_prompt=not continue_final,
         continue_final_message=continue_final,
     )
 

@@ -70,6 +70,7 @@ class EntropixAPIHandler(APIHandler):
                 prompt,
                 model = self.model,
                 sampler_config=self.sampler_config,
+                key=self.key,
             ),
             range(self.max_tokens)
         ):
@@ -141,6 +142,7 @@ class EntropixAPIHandler(APIHandler):
                 prompt,
                 model=self.model,
                 sampler_config=self.sampler_config,
+                key=self.key,
             ),
             range(self.max_tokens)
         ):
@@ -189,8 +191,88 @@ class EntropixAPIHandler(APIHandler):
         self.wfile.flush()
 
     def do_POST(self):
-        self.sampler_config = SamplerConfig()
-        return super().do_POST()
+        """
+        Respond to a POST request from a client.
+        """
+        endpoints = {
+            "/v1/completions": self.handle_text_completions,
+            "/v1/chat/completions": self.handle_chat_completions,
+            "/chat/completions": self.handle_chat_completions,
+        }
+
+        if self.path not in endpoints:
+            self._set_completion_headers(404)
+            self.end_headers()
+            self.wfile.write(b"Not Found")
+            return
+
+        # Fetch and parse request body
+        content_length = int(self.headers["Content-Length"])
+        raw_body = self.rfile.read(content_length)
+        self.body = json.loads(raw_body.decode())
+        indent = "\t"  # Backslashes can't be inside of f-strings
+        logging.debug(f"Incoming Request Body: {json.dumps(self.body, indent=indent)}")
+        assert isinstance(
+            self.body, dict
+        ), f"Request should be dict, but got {type(self.body)}"
+
+        # Extract request parameters from the body
+        self.stream = self.body.get("stream", False)
+        self.seed = self.body.get("seed", None)
+        sampler_config_params = self.body.get("sampler_config", {})
+        self.sampler_config = SamplerConfig(**sampler_config_params)
+        self.stream_options = self.body.get("stream_options", None)
+        self.requested_model = self.body.get("model", "default_model")
+        self.adapter = self.body.get("adapters", None)
+        self.max_tokens = self.body.get("max_completion_tokens", None)
+        if self.max_tokens is None:
+            self.max_tokens = self.body.get("max_tokens", 512)
+        self.temperature = self.body.get("temperature", 1.0)
+        self.top_p = self.body.get("top_p", 1.0)
+        self.repetition_penalty = self.body.get("repetition_penalty", 1.0)
+        self.repetition_context_size = self.body.get("repetition_context_size", 20)
+        self.logit_bias = self.body.get("logit_bias", None)
+        self.logprobs = self.body.get("logprobs", -1)
+        self.validate_model_parameters()
+
+        if self.seed is not None:
+            self.key = mx.random.key(seed=self.seed)
+        else:
+            self.key = None
+
+        # Load the model if needed
+        try:
+            self.model, self.tokenizer = self.model_provider.load(
+                self.requested_model, self.adapter
+            )
+        except:
+            self._set_completion_headers(404)
+            self.end_headers()
+            self.wfile.write(b"Not Found")
+            return
+
+        # Get stop id sequences, if provided
+        stop_words = self.body.get("stop")
+        stop_words = stop_words or []
+        stop_words = [stop_words] if isinstance(stop_words, str) else stop_words
+        stop_id_sequences = [
+            self.tokenizer.encode(stop_word, add_special_tokens=False)
+            for stop_word in stop_words
+        ]
+
+        # Send header type
+        (
+            self._set_stream_headers(200)
+            if self.stream
+            else self._set_completion_headers(200)
+        )
+
+        # Call endpoint specific method
+        prompt = endpoints[self.path]()
+
+        # Call method based on response type
+        method = self.handle_stream if self.stream else self.handle_completion
+        method(prompt, stop_id_sequences)
 
     def generate_metrics_response(
        self,

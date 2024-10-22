@@ -22,6 +22,7 @@ def generate_step(
     max_kv_size: Optional[int] = None,
     cache_history: Optional[List[Tuple[mx.array, mx.array]]] = None,
     sampler_config: SamplerConfig = SamplerConfig(),
+    key: Union[mx.array, None] = None,
 ) -> Generator[Tuple[mx.array, Dict[str, float]], None, None]:
     """
     A generator producing token ids based on the given prompt from the model.
@@ -50,7 +51,6 @@ def generate_step(
     Note:
         This function uses entropy sampling to allow for "thinking" time when the model is less certain.
     """
-
     y = prompt
     tokens = None
 
@@ -81,7 +81,7 @@ def generate_step(
         #     (0, pad_length)  # Pad 0 before and pad_length after the key_length axis
         # ]
         # padded_scores = mx.pad(scores, pad_width=pad_width)
-        y, metrics = sample(y, logits, scores, cfg = sampler_config) # Convert returned (bsz, 1) to (bsz, )
+        y, metrics = sample(y, logits, scores, cfg = sampler_config, key=key) # Convert returned (bsz, 1) to (bsz, )
         metrics = {k: v.item() for k, v in metrics.items()}
         metrics["cur_pos"] = scores.shape[-1]
         return y, metrics
@@ -107,6 +107,7 @@ def generate(
     max_tokens: int = 100,
     verbose: bool = False,
     formatter: Optional[Callable] = None,
+    seed: Optional[int] = None,
     **kwargs,
 ) -> Union[str, Generator[str, None, None]]:
     """
@@ -138,9 +139,13 @@ def generate(
     detokenizer.reset()
 
     sampler_config = SamplerConfig()
+    if seed is not None:
+        key = mx.random.seed(seed)
+    else:
+        key = None
 
     for (token, metrics), n in zip(
-        generate_step(prompt_tokens, model, sampler_config = sampler_config, **kwargs),
+        generate_step(prompt_tokens, model, sampler_config = sampler_config, key=key, **kwargs),
         range(max_tokens),
     ):
         if n == 0:

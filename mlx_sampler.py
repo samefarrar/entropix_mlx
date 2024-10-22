@@ -1,6 +1,7 @@
 import mlx.core as mx
 
 from mlx_attention_sampler import SamplerConfig
+from typing import Union
 
 LN_2 = 0.69314718056  # ln(2)
 
@@ -49,9 +50,9 @@ def _sample(
     logits: mx.array,
     temperature=0.666,
     top_p=0.9,
-    top_k: int = 27,
+    top_k: int = 33,
     min_p: float = 0.0,
-    key=mx.random.key(1337),
+    key: Union[mx.array, None] = None,
 ) -> mx.array:
     batch_size = logits.shape[0]
     logit = logits[:, -1] / temperature  # (batch_size, vocab_size)
@@ -59,28 +60,18 @@ def _sample(
     # Calculate probabilities by softmaxing the temparature-scaled logits
     probs = mx.softmax(logit, axis=-1)
 
-    # Sort probabilities in descending order
-    # This should then look like
     sorted_indices = mx.argsort(-probs, axis=-1)  # e.g. (bsz x [3, 1280, 1, 0, 2, ...])
-    sorted_probs = mx.take_along_axis(
-        probs, sorted_indices, axis=-1
-    )  # e.g. (bsz x [0.9, 0.05, 0.02, 0.01, 0.01, ...])
+    sorted_probs = mx.take_along_axis(probs, sorted_indices, axis=-1)  # e.g. (bsz x [0.9, 0.05, 0.02, 0.01, 0.01, ...])
 
     # Apply min_p sampling
     if min_p > 0:
         top_prob = sorted_probs[..., 0]  # Highest probability e.g. (bsz x[0.9])
         scaled_min_p = min_p * top_prob  # e.g. 0.9 * 0.1 = 0.09, (bsz x[0.09])
-        min_p_mask = (
-            sorted_probs > scaled_min_p[..., None]
-        )  # e.g. (bsz * [True, False, False, False, False, ...])
-        sorted_probs = mx.where(
-            min_p_mask, sorted_probs, 0.0
-        )  # e.g. (bsz * [0.9, 0.0, 0.0, 0.0, 0.0, ...])
+        min_p_mask = (sorted_probs > scaled_min_p[..., None])  # e.g. (bsz * [True, False, False, False, False, ...])
+        sorted_probs = mx.where(min_p_mask, sorted_probs, 0.0)  # e.g. (bsz * [0.9, 0.0, 0.0, 0.0, 0.0, ...])
 
     # Apply top_p (nucleus) sampling
-    cumulative_probs = mx.cumsum(
-        sorted_probs, axis=-1, inclusive=False
-    )  # e.g. (bsz * [0.9, 0.95, 0.97, 0.98, 0.99, ...]
+    cumulative_probs = mx.cumsum(sorted_probs, axis=-1)  # e.g. (bsz * [0.9, 0.95, 0.97, 0.98, 0.99, ...]
     # or, if min_p is applied, (bsz * [0.9, 0.0, 0.0, 0.0, 0.0, ...]
     top_p_mask = (
         cumulative_probs <= top_p
@@ -129,7 +120,7 @@ def sample(
     scores: mx.array,
     cfg: SamplerConfig,
     clarifying_question_token: int = 2564,
-    keys=mx.random.key(seed=1337),
+    key: Union[mx.array, None] = None,
 ) -> tuple[mx.array, dict[str, float]]:
     metrics = calculate_metrics(logits, scores)
     ent, vent = metrics["logits_entropy"], metrics["logits_varentropy"]
@@ -147,7 +138,7 @@ def sample(
         ent < cfg.low_logits_entropy_threshold
         and vent < cfg.low_logits_varentropy_threshold
     ):
-        print("🌊", flush = True, end = "")
+        #print("🌊", flush = True, end = "")
         return mx.argmax(logits[:, -1], axis=-1, keepdims=True), metrics
 
     # High Entropy, Low Varentropy: "treading carefully, asking clarifying questions"
@@ -155,7 +146,7 @@ def sample(
         ent > cfg.high_logits_entropy_threshold
         and vent < cfg.low_logits_varentropy_threshold
     ):
-        print("ε", flush = True, end = "")
+        #print("ε", flush = True, end = "")
         # Insert a clarifying question token if not already present
         if not mx.any(mx.equal(gen_tokens[:, -1], clarifying_question_token).any()):
             return mx.array(
@@ -173,6 +164,7 @@ def sample(
                 top_p=cfg.top_p,
                 top_k=cfg.top_k,
                 min_p=cfg.min_probability,
+                key=key,
             ), metrics
 
     # Low Entropy, High Varentropy: "exploring forks in the path"
@@ -182,7 +174,7 @@ def sample(
         and attention_entropy > cfg.low_attention_entropy_threshold
         and attention_varentropy < cfg.medium_attention_varentropy_threshold
     ):
-        print("Ψ", flush = True, end = "")
+        #print("Ψ", flush = True, end = "")
         # TODO(xjdr): Implement proper branching logic
         # Return top-k tokens to allow for branching
         # top_k_values, top_k_indices = mx.top_k(logits[:, -1], k=top_k)
@@ -198,6 +190,7 @@ def sample(
             top_p=cfg.top_p,
             top_k=top_k_adj,
             min_p=cfg.min_probability,
+            key=key,
         ), metrics
 
     # High Entropy, High Varentropy: "resampling in the mist"
@@ -206,7 +199,7 @@ def sample(
         and vent > cfg.high_logits_varentropy_threshold
         and attention_entropy > cfg.high_attention_entropy_threshold
     ):
-        print("!", flush = True, end = "")
+        #print("!", flush = True, end = "")
         # Use high temperature and min_p sampling
         temp_adj = (
             cfg.high_entropy_varentropy_attention_offset
@@ -221,6 +214,7 @@ def sample(
             top_p=top_p_adj,
             top_k=cfg.top_k,
             min_p=cfg.min_probability,
+            key=key,
         ), metrics
 
     # Middle ground: smooth transition
@@ -272,5 +266,5 @@ def sample(
             top_p=top_p,
             top_k=top_k,
             min_p=min_p,
-            key=keys,
+            key=key,
         ), metrics
