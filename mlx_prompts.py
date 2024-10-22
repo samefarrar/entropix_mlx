@@ -1,6 +1,26 @@
 import csv
-from pathlib import Path
-from typing import List, Dict
+
+
+def handle_chat_template(
+    input: str | list[dict], tokenizer, prefill: str | None = None
+) -> str:
+    if isinstance(input, str):
+        input = [{"role": "user", "content": input}]
+    elif not isinstance(input, list):
+        raise ValueError("Invalid input type. Expected str or list[dict].")
+    continue_final = False
+    if prefill:
+        input.append({"role": "assistant", "content": prefill})
+        continue_final = True
+    elif input and input[-1]["role"] == "assistant":
+        continue_final = True
+    return tokenizer.apply_chat_template(
+        input,
+        tokenize=False,
+        add_generation_prompt=False,
+        continue_final_message=continue_final,
+    )
+
 
 def create_prompt_template(role: str, task: str) -> str:
     return f"""<|start_header_id|>system<|end_header_id|>
@@ -39,16 +59,18 @@ Certainly. I'll now provide my expert response to the task, drawing upon my exte
 
 """
 
-def create_prompts_from_csv(csv_path: str) -> List[str]:
+
+def create_prompts_from_csv(csv_path: str) -> list[str]:
     prompts = []
-    with open(csv_path, 'r') as csvfile:
+    with open(csv_path) as csvfile:
         reader = csv.DictReader(csvfile)
         for row in reader:
-            role = row['act']
-            task = row['prompt']
+            role = row["act"]
+            task = row["prompt"]
             prompt = create_prompt_template(role, task)
             prompts.append(prompt)
     return prompts
+
 
 thinking_prompt = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 <entropixThinking>
@@ -113,41 +135,14 @@ Use thoughts as a scratchpad, writing out all calculations and reasoning explici
 Synthesize the final answer within <answer> tags, providing a clear, concise summary.
 Conclude with a final reflection on the overall solution, discussing effectiveness, challenges, and solutions. Assign a final reward score."""
 
-prompt1 = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
-<antThinking>
-You're absolutely right. I need to delve deeper into my actual thought processes, including the uncertainties, associations, and even potential biases that arise as I consider the query. My previous responses, while informative, didn't truly capture the nuanced, sometimes messy nature of cognition. I'll strive to provide a more authentic representation of my internal dialogue, including moments of doubt, tangential thoughts, and the process of refining ideas. This should result in a more genuine demonstration of LLM chain of thought, reflection, and self-correction.
-</antThinking>
+prompt1 = "Which number is larger, 9.9 or 9.11?"
 
-Which number is larger, 9.9 or 9.11?<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-"""
+prompt2 = "What is the capital of Spain?"
 
-
-bp1 = """
-<antThinking>
-You're absolutely right. I need to delve deeper into my actual thought processes, including the uncertainties, associations, and even potential biases that arise as I consider the query. My previous responses, while informative, didn't truly capture the nuanced, sometimes messy nature of cognition. I'll strive to provide a more authentic representation of my internal dialogue, including moments of doubt, tangential thoughts, and the process of refining ideas. This should result in a more genuine demonstration of LLM chain of thought, reflection, and self-correction.
-</antThinking>
-
-Which number is larger, 9.9 or 9.11?<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-
-<thinking>
-"""
-
-prompt2 = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
-You are a helpful assistant<|eot_id|><|start_header_id|>user<|end_header_id|>
-
-What is the capital of Spain?<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-"""
-
-bp2 = """
-<antThinking>
-You're absolutely right. The previous example, while demonstrating complex thought processes, didn't provide a clear instance of arriving at a definitive, single correct answer through reflection and self-correction.
-</antThinking>
-
-What is the capital of Spain?<|eot_id|>
-"""
-
-prompt3 = """<|start_header_id|>system<|end_header_id|>
-You are an expert in composing functions. You are given a question and a set of possible functions.
+prompt3 = [
+    {
+        "role": "system",
+        "content": """You are an expert in composing functions. You are given a question and a set of possible functions.
 Based on the question, you will need to make one or more function/tool calls to achieve the purpose.
 If none of the functions can be used, point it out. If the given question lacks the parameters required by the function,also point it out. You should only return the function call in tools call sections.
 If you decide to invoke any of the function(s), you MUST put it in the format of [func_name1(params_name1=params_value1, params_name2=params_value2...), func_name2(params)]
@@ -175,77 +170,28 @@ Here is a list of functions in JSON format that you can invoke.[
         }
     }
 ]
-<|eot_id|><|start_header_id|>user<|end_header_id|>
-
-Can you retrieve the details for the user with the ID 7890, who has black as their special request?<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-"""
-bp3 = """
-Here is a list of functions in JSON format that I can invoke.[
+""",
+    },
     {
-        "name": "get_user_info",
-        "description": "Retrieve details for a specific user by their unique identifier. Note that the provided function is in Python 3 syntax.",
-        "parameters": {
-            "type": "dict",
-            "required": [
-                "user_id"
-            ],
-            "properties": {
-                "user_id": {
-                "type": "integer",
-                "description": "The unique identifier of the user. It is used to fetch the specific user details from the database."
-            },
-            "special": {
-                "type": "string",
-                "description": "Any special information or parameters that need to be considered while fetching user details.",
-                "default": "none"
-                }
-            }
-        }
-    }
+        "role": "user",
+        "content": """Can you retrieve the details for the user with the ID 7890, who has black as their special request?""",
+    },
 ]
 
-Can you retrieve the details for the user with the ID 7890, who has black as their special request in proper JSON format?<|eot_id|>
+prompt4 = [
+    {
+        "role": "system",
+        "content": """You are a master weaver of tales, a virtuoso of words painting vivid pictures that ignite the imagination. Your stories shimmer with an otherworldly enchantment, breathing life into realms uncharted and characters unforgettable. With each carefully crafted phrase, you beckon readers to embark on a journey through the portals of wonder you conjure, to lose themselves in the tapestries of adventure, magic, and emotion you spin.
+Now, prepare to summon the depths of your storytelling prowess. Let your words flow like an ancient elven incantation, each one pulsing with arcane power. Transport us to a realm where elven mages and valiant heroes ride forth on quests of legend, their paths intertwined by the threads of destiny. Unleash the full spectrum of your narrative sorcery to immerse us in this saga - make us feel the crackle of Frieren's magic dancing at her fingertips, smell the earthy musk of the forests they traverse, hear the clashing of swords and the whispering of ancient secrets on the wind. Weave for us an epic to stir the soul and haunt the memory long after the final word fades away.""",
+    },
+    {
+        "role": "user",
+        "content": "Spin an enchanting tale recounting the epic adventures of Frieren, the elven mage of unparalleled skill, and her intrepid band of heroes. Let your words conjure the wonders and perils they face as they navigate lands steeped in magic and legend on a quest that will echo through the ages. Immerse us in this saga with the full force of your storytelling sorcery.",
+    },
+    {
+        "role": "assistant",
+        "content": """<|reserved_special_token_12|>""",
+    },
+]
 
-{
-  "name": "get_user_info",
-  "parameters": {
-    "user_id: """
-
-prompt4 = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
-You are a masterful story teller. you can paint with all the colors of the wind.<|eot_id|><|start_header_id|>user<|end_header_id|>
-
-Tell me a long and wonderful story about the adventures of the elven mage frieren and her band of heros<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-"""
-
-bp4 = """
-You are a masterful story teller. you can paint with all the colors of the wind.<|eot_id|>
-
-Let me tell you a story about the adventures of the elven mage frieren and her band of heros
-"""
-
-p4o = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
-You are a master weaver of tales, a virtuoso of words painting vivid pictures that ignite the imagination. Your stories shimmer with an otherworldly enchantment, breathing life into realms uncharted and characters unforgettable. With each carefully crafted phrase, you beckon readers to embark on a journey through the portals of wonder you conjure, to lose themselves in the tapestries of adventure, magic, and emotion you spin.
-Now, prepare to summon the depths of your storytelling prowess. Let your words flow like an ancient elven incantation, each one pulsing with arcane power. Transport us to a realm where elven mages and valiant heroes ride forth on quests of legend, their paths intertwined by the threads of destiny. Unleash the full spectrum of your narrative sorcery to immerse us in this saga - make us feel the crackle of Frieren's magic dancing at her fingertips, smell the earthy musk of the forests they traverse, hear the clashing of swords and the whispering of ancient secrets on the wind. Weave for us an epic to stir the soul and haunt the memory long after the final word fades away.
-<|eot_id|><|start_header_id|>user<|end_header_id|>
-Spin an enchanting tale recounting the epic adventures of Frieren, the elven mage of unparalleled skill, and her intrepid band of heroes. Let your words conjure the wonders and perils they face as they navigate lands steeped in magic and legend on a quest that will echo through the ages. Immerse us in this saga with the full force of your storytelling sorcery.
-<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-
-<|reserved_special_token_12|>
-"""
-
-bp5 = """
-<antThinking>
-You're absolutely right. I need to delve deeper into my actual thought processes, including the uncertainties, associations, and even potential biases that arise as I consider the query. My previous responses, while informative, didn't truly capture the nuanced, sometimes messy nature of cognition. I'll strive to provide a more authentic representation of my internal dialogue, including moments of doubt, tangential thoughts, and the process of refining ideas. This should result in a more genuine demonstration of LLM chain of thought, reflection, and self-correction.
-</antThinking>
-You are a principal devops engineer at google. You are an expert at all things cloud and deployment. Your task is to create ansible and terraform script to bootstrasp k8 cluster on Azure. Be clear and concise. Make sure it is production grade. Think and reflect about your actions to ensure to accomplished the task successfully.
-
-"""
-
-
-prompt5 = """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
-<antThinking>
-You're absolutely right. I need to delve deeper into my actual thought processes, including the uncertainties, associations, and even potential biases that arise as I consider the query. My previous responses, while informative, didn't truly capture the nuanced, sometimes messy nature of cognition. I'll strive to provide a more authentic representation of my internal dialogue, including moments of doubt, tangential thoughts, and the process of refining ideas. This should result in a more genuine demonstration of LLM chain of thought, reflection, and self-correction.
-</antThinking>
-You are a principal devops engineer at google. You are an expert at all things cloud and deployment. Your task is to create ansible and terraform script to bootstrasp k8 cluster on Azure. Be clear and concise. Make sure it is production grade. Think and reflect about your actions to ensure to accomplished the task successfully.<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-
-"""
+prompt5 = """You are a principal devops engineer at google. You are an expert at all things cloud and deployment. Your task is to create ansible and terraform script to bootstrasp k8 cluster on Azure. Be clear and concise. Make sure it is production grade. Think and reflect about your actions to ensure to accomplished the task successfully."""
