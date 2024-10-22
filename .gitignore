@@ -7,6 +7,9 @@ uv.lock
 converted
 ui/bun.lockb
 metrics.csv
+entropix/data
+convert.py
+
 
 # boilerplate from here on down
 *__pycache__*
