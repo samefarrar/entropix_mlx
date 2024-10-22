@@ -23,8 +23,10 @@ dependencies = [
     "torch>=2.4.1",
     "transformers>=4.45.1",
     "tyro>=0.8.11",
-    "lm-eval[api]>=0.4.5",
+    "lm-eval[api,ifeval,math,sentencepiece]==0.4.5",
     "accelerate>=1.0.1",
+    "langdetect>=1.0.9",
+    "immutabledict>=4.2.0",
 ]
 
 [tool.pyright]
