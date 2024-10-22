@@ -47,46 +47,48 @@ def calculate_metrics(
     }
 
 
-def _sample(
+def adaptive_sample(
     logits: mx.array,
-    temperature=0.666,
-    top_p=0.9,
-    top_k: int = 33,
-    min_p: float = 0.0,
+    *,
+    temperature: float | mx.array = 0.666,
     key: Union[mx.array, None] = None,
+    epsilon: float = 0.01
 ) -> mx.array:
     batch_size = logits.shape[0]
-    #print(f"t({temperature.item()}), top_p({top_p.item()}), top_k({top_k}), min_p({min_p.item()})")
     logit = logits[:, -1] / temperature  # (batch_size, vocab_size)
-
     # Calculate probabilities by softmaxing the temparature-scaled logits
     probs = mx.softmax(logit, axis=-1)
 
     sorted_indices = mx.argsort(-probs, axis=-1)  # e.g. (bsz x [3, 1280, 1, 0, 2, ...])
     sorted_probs = mx.take_along_axis(probs, sorted_indices, axis=-1)  # e.g. (bsz x [0.9, 0.05, 0.02, 0.01, 0.01, ...])
 
-    # Apply min_p sampling
-    if min_p > 0:
-        top_prob = sorted_probs[..., 0]  # Highest probability e.g. (bsz x[0.9])
-        scaled_min_p = min_p * top_prob  # e.g. 0.9 * 0.1 = 0.09, (bsz x[0.09])
-        min_p_mask = (sorted_probs > scaled_min_p[..., None])  # e.g. (bsz * [True, False, False, False, False, ...])
-        sorted_probs = mx.where(min_p_mask, sorted_probs, 0.0)  # e.g. (bsz * [0.9, 0.0, 0.0, 0.0, 0.0, ...])
+    mask = mx.zeros_like(sorted_probs)
+    cumulative_entropy = mx.zeros((batch_size,))
+    cumulative_varentropy = mx.zeros((batch_size,))
+    previous_entropy = -mx.sum(sorted_probs[0] * mx.log2(mx.clip(sorted_probs[0], 1e-10, 1.0)))
 
-    # Apply top_p (nucleus) sampling
-    cumulative_probs = mx.cumsum(sorted_probs, axis=-1)  # e.g. (bsz * [0.9, 0.95, 0.97, 0.98, 0.99, ...]
-    # or, if min_p is applied, (bsz * [0.9, 0.0, 0.0, 0.0, 0.0, ...]
-    top_p_mask = (
-        cumulative_probs <= top_p
-    )  # e.g. (bsz * [True, True, True, True, True, ...]
-    # or, if min_p is applied, (bsz * [True, False, False, False, False, ...]
-    sorted_probs = mx.where(
-        top_p_mask, sorted_probs, 0.0
-    )  # e.g. (bsz * [0.9, 0.05, 0.02, 0.01, 0.01, ...])
+    entropy_reduction = cumulative_entropy - previous_entropy
+    counter = 0
+    while (entropy_reduction >= epsilon) & (counter < sorted_probs.shape[-1]):
+        current_probs = sorted_probs[:, counter]
 
-    # Optionally apply top_k sampling
-    sorted_probs[..., top_k:] = 0.0  # e.g. (bsz * [0.9, 0.05, 0.0, 0.0, 0.0, ...])
+        # Update entropy and varentropy with current token
+        current_entropy = -mx.sum(current_probs * mx.log2(mx.clip(current_probs, 1e-10, 1.0)))
+        current_varentropy = mx.sum(current_probs * (mx.log2(mx.clip(current_probs, 1e-10, 1.0)) + current_entropy[..., None]) ** 2)
 
-    sorted_probs = sorted_probs / mx.sum(sorted_probs, axis = -1)
+        entropy_reduction = cumulative_entropy - current_entropy
+        varentropy_reduction = cumulative_varentropy - current_varentropy
+
+        mask = mx.where(entropy_reduction >= epsilon, True, False)
+
+        cumulative_entropy[:, counter] = current_entropy
+        cumulative_varentropy[:, counter] = current_varentropy
+
+        counter += 1
+
+    final_mask = mask[-1]
+    candidate_probs = sorted_probs * final_mask
+    candidate_probs = candidate_probs / mx.sum(candidate_probs, axis=-1, keepdims=True)
 
     # Sample token
     sorted_token = mx.random.categorical(mx.log(sorted_probs / (1 - sorted_probs)), key=key)[
@@ -96,26 +98,6 @@ def _sample(
         sorted_indices, sorted_token, axis=-1
     )  # e.g. [3,] in shape (batch_size,)
     return token
-
-
-@mx.compile
-def score_sample(
-    sample: mx.array,
-    logits: mx.array,
-) -> mx.array:
-    batch_size, seq_length = sample.shape
-    vocab_size = logits.shape[-1]
-
-    # Create one-hot encoding
-    one_hot = mx.zeros((batch_size, seq_length, vocab_size))
-    one_hot[mx.arange(batch_size)[:, None], mx.arange(seq_length)[None, :], sample] = 1
-
-    # Calculate log probability
-    log_probs = mx.sum(
-        mx.softmax(logits[:, -1], axis=-1).log()[:, None, :] * one_hot, axis=(1, 2)
-    )
-
-    return log_probs
 
 
 def sample(
