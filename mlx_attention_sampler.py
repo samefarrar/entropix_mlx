@@ -55,14 +55,14 @@ class SamplerConfig(BaseModel):
     # TODO not convinced this should
     n_adaptive_samples: int = 5
 
-    adaptive_temperature_logits_coefficient: float = 0.5
-    adaptive_temperature_attention_coefficient: float = 0.5
-    adaptive_temperature_agreement_coefficient: float = 800
-    adaptive_top_p_coefficient: float = 0.6
+    adaptive_temperature_logits_coefficient: float = 0.65
+    adaptive_temperature_attention_coefficient: float = 0.2
+    adaptive_temperature_agreement_coefficient: float = 200
+    adaptive_top_p_coefficient: float = 0.08
     adaptive_top_k_coefficient: float = 0.1
-    adaptive_top_k_interaction_coefficient: float = 0.1
-    adaptive_top_k_agreement_coefficient: float = 200
-    adaptive_min_p_coefficient: float = 0.05
+    adaptive_top_k_interaction_coefficient: float = 0.10
+    adaptive_top_k_agreement_coefficient: float = 21
+    adaptive_min_p_coefficient: float = 0.02
     adaptive_score_logits_entropy_coefficient: float = 0.1
     adaptive_score_attention_entropy_coefficient: float = 0.2 / 0.29
     adaptive_score_logits_varentropy_coefficient: float = 0.3

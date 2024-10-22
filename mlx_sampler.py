@@ -147,6 +147,7 @@ def sample(
         ent < cfg.low_logits_entropy_threshold
         and vent < cfg.low_logits_varentropy_threshold
     ):
+        print("🌊", flush = True, end = "")
         return mx.argmax(logits[:, -1], axis=-1, keepdims=True), metrics
 
     # High Entropy, Low Varentropy: "treading carefully, asking clarifying questions"
@@ -154,7 +155,7 @@ def sample(
         ent > cfg.high_logits_entropy_threshold
         and vent < cfg.low_logits_varentropy_threshold
     ):
-        # print("ε", flush = True, end = "")
+        print("ε", flush = True, end = "")
         # Insert a clarifying question token if not already present
         if not mx.any(mx.equal(gen_tokens[:, -1], clarifying_question_token).any()):
             return mx.array(
@@ -181,7 +182,7 @@ def sample(
         and attention_entropy > cfg.low_attention_entropy_threshold
         and attention_varentropy < cfg.medium_attention_varentropy_threshold
     ):
-        # print("Ψ", flush = True, end = "")
+        print("Ψ", flush = True, end = "")
         # TODO(xjdr): Implement proper branching logic
         # Return top-k tokens to allow for branching
         # top_k_values, top_k_indices = mx.top_k(logits[:, -1], k=top_k)
@@ -205,7 +206,7 @@ def sample(
         and vent > cfg.high_logits_varentropy_threshold
         and attention_entropy > cfg.high_attention_entropy_threshold
     ):
-        # print("!", flush = True, end = "")
+        print("!", flush = True, end = "")
         # Use high temperature and min_p sampling
         temp_adj = (
             cfg.high_entropy_varentropy_attention_offset
@@ -230,15 +231,17 @@ def sample(
             metrics["attention_entropy"] + metrics["attention_varentropy"]
         )
 
-        temperature = cfg.temperature * (
+        temperature = mx.clip(cfg.temperature * (
             1
             + cfg.adaptive_temperature_logits_coefficient * ent
             + cfg.adaptive_temperature_attention_coefficient * attention_entropy
             - cfg.adaptive_temperature_agreement_coefficient * agreement
-        )
+        ),
+        0,
+        2.3)
         top_p = mx.clip(
-            cfg.top_p * (cfg.adaptive_top_p_coefficient * attention_varentropy),
-            0.1,
+            cfg.top_p * (1 - cfg.adaptive_top_p_coefficient * attention_varentropy),
+            0.6,
             1.0,
         )
         top_k = int(
@@ -252,8 +255,8 @@ def sample(
                         - cfg.adaptive_top_k_agreement_coefficient * agreement.item()
                     )
                 ),
-                a_min=1,
-                a_max=100,
+                a_min=10,
+                a_max=60,
             )
         )
         min_p = mx.clip(
@@ -262,7 +265,7 @@ def sample(
             0.01,
             0.4,
         )
-
+        #print(f"({temperature.item():.2f},{top_p.item():.2f},{top_k},{min_p.item():.2f})", flush = True, end = "")
         return _sample(
             logits,
             temperature=temperature,
