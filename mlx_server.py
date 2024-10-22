@@ -26,9 +26,7 @@ class EntropixModelProvider(ModelProvider):
     def load(self, requested_model, requested_adapter = None):
         if requested_model != "default_model":
             self.model_path = Path(requested_model)
-        print(f"Loading model...")
         if self.is_model_loaded:
-            print(f"Model already loaded. Returning...")
             return self.model, self.tokenizer
         model_path = self.model_path
         try:
@@ -104,8 +102,6 @@ class EntropixAPIHandler(APIHandler):
             prompt_token_count=len(prompt),
             completion_token_count=len(tokens),
         )
-
-        print(response)
 
         response_json = json.dumps(response).encode()
         indent = "\t"
