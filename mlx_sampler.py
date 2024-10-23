@@ -63,30 +63,39 @@ def adaptive_sample(
     sorted_probs = mx.take_along_axis(probs, sorted_indices, axis=-1)  # e.g. (bsz x [0.9, 0.05, 0.02, 0.01, 0.01, ...])
 
     mask = mx.zeros_like(sorted_probs)
-    cumulative_entropy = mx.zeros((batch_size,))
-    cumulative_varentropy = mx.zeros((batch_size,))
-    previous_entropy = -mx.sum(sorted_probs[0] * mx.log2(mx.clip(sorted_probs[0], 1e-10, 1.0)))
 
-    entropy_reduction = cumulative_entropy - previous_entropy
-    counter = 0
+    counter = 20
+    cumulative_entropy = mx.zeros((batch_size, ))
+    cumulative_varentropy = mx.zeros((batch_size, ))
+
+    current_entropy = -mx.sum(sorted_probs[:, :counter] * mx.log2(mx.clip(sorted_probs[:, :counter], 1e-10, 1.0)))
+    current_varentropy = mx.sum(sorted_probs[:, :counter] * (mx.log2(mx.clip(sorted_probs[:, :counter], 1e-10, 1.0)) + current_entropy[..., None]) ** 2)
+
+    cumulative_entropy[: counter] = current_entropy
+    cumulative_varentropy[: counter] = current_varentropy
+
+    entropy_reduction = current_entropy
+    counter += 1
     while (entropy_reduction >= epsilon) & (counter < sorted_probs.shape[-1]):
-        current_probs = sorted_probs[:, counter]
+        previous_entropy = current_entropy
+        previous_varentropy = current_varentropy
+
+        counter += 1
+        current_probs = sorted_probs[:, :counter]
 
         # Update entropy and varentropy with current token
         current_entropy = -mx.sum(current_probs * mx.log2(mx.clip(current_probs, 1e-10, 1.0)))
         current_varentropy = mx.sum(current_probs * (mx.log2(mx.clip(current_probs, 1e-10, 1.0)) + current_entropy[..., None]) ** 2)
 
-        entropy_reduction = cumulative_entropy - current_entropy
-        varentropy_reduction = cumulative_varentropy - current_varentropy
+        cumulative_entropy[: counter] = current_entropy
+        cumulative_varentropy[: counter] = current_varentropy
 
-        mask = mx.where(entropy_reduction >= epsilon, True, False)
+        entropy_reduction = current_entropy - previous_entropy
+        varentropy_reduction = current_varentropy - previous_varentropy
 
-        cumulative_entropy[:, counter] = current_entropy
-        cumulative_varentropy[:, counter] = current_varentropy
+        mask = mx.concatenate([mx.ones((batch_size, counter)), mx.zeros((batch_size, sorted_probs.shape[-1] - counter))], axis = -1)
 
-        counter += 1
-
-    final_mask = mask[-1]
+    final_mask = mask
     candidate_probs = sorted_probs * final_mask
     candidate_probs = candidate_probs / mx.sum(candidate_probs, axis=-1, keepdims=True)
 
@@ -123,30 +132,29 @@ def new_sample(
         epsilon=cfg.epsilon
     ), metrics
 
-def sample(
-    logits: mx.array,
-    attention_scores: mx.array,
-    cfg: SamplerConfig = SamplerConfig(),
-    key: Union[mx.array, None] = None,
-) -> Tuple[mx.array, dict[str, mx.array]]:
-    batch_size = logits.shape[0]
-    logit = logits[:, -1] / cfg.temperature  # (batch_size, vocab_size)
-    probs = mx.softmax(logit, axis=-1)
+# Old Sampler with top_p and temperature
 
-    sorted_indices = mx.argsort(-probs, axis=-1)  # e.g. (bsz x [3, 1280, 1, 0, 2, ...])
-    sorted_probs = mx.take_along_axis(probs, sorted_indices, axis=-1)  # e.g. (bsz x [0.9, 0.05, 0.02, 0.01, 0.01, ...])
+# def sample(
+#     logits: mx.array,
+#     attention_scores: mx.array,
+#     cfg: SamplerConfig = SamplerConfig(),
+#     key: Union[mx.array, None] = None,
+# ) -> Tuple[mx.array, dict[str, mx.array]]:
+#     batch_size = logits.shape[0]
+#     logit = logits[:, -1] / cfg.temperature  # (batch_size, vocab_size)
+#     probs = mx.softmax(logit, axis=-1)
 
-    cumulative_probs = mx.cumsum(sorted_probs, axis=-1)
-    mask = cumulative_probs < cfg.top_p
+#     sorted_indices = mx.argsort(-probs, axis=-1)  # e.g. (bsz x [3, 1280, 1, 0, 2, ...])
+#     sorted_probs = mx.take_along_axis(probs, sorted_indices, axis=-1)  # e.g. (bsz x [0.9, 0.05, 0.02, 0.01, 0.01, ...])
+#     cumulative_probs = mx.cumsum(sorted_probs, axis=-1)
+#     mask = cumulative_probs < cfg.top_p
 
-    sorted_probs = mx.where(mask, sorted_probs, 0.0)
+#     sorted_probs = mx.where(mask, sorted_probs, 0.0)
+#     sorted_probs = sorted_probs / mx.sum(sorted_probs, axis=-1, keepdims=True)
+#     sorted_token = mx.random.categorical(mx.log(sorted_probs / (1 - sorted_probs)), key=key)[
+#         ..., None]
 
-    sorted_probs = sorted_probs / mx.sum(sorted_probs, axis=-1, keepdims=True)
-
-    sorted_token = mx.random.categorical(mx.log(sorted_probs / (1 - sorted_probs)), key=key)[
-        ..., None]
-
-    token = mx.take_along_axis(
-        sorted_indices, sorted_token, axis=-1
-    )
-    return token, calculate_metrics(logits, attention_scores)
+#     token = mx.take_along_axis(
+#         sorted_indices, sorted_token, axis=-1
+#     )
+#     return token, calculate_metrics(logits, attention_scores)
