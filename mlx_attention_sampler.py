@@ -9,9 +9,13 @@ class SamplerConfig(BaseModel):
 
     temperature: float = 0.666
     top_p: float = 0.90
+    min_consideration: float = 30
     top_k: int = 36
     min_probability: float = 0.03  # Turn this down to 0.01 to reduce the shoggoth
-    epsilon: float = 0.01
+    epsilon: float = 1e-3
+
+    min_temperature: float = 0.0
+    max_temperature: float = 2.3
 
     # Logits entropy thresholds
     low_logits_entropy_threshold: float = 0.004
