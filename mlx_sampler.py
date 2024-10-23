@@ -52,11 +52,23 @@ def adaptive_sample(
     *,
     temperature: float | mx.array = 0.666,
     key: Union[mx.array, None] = None,
-    epsilon: float = 0.01
+    epsilon: float = 0.01,
+    cfg: SamplerConfig
 ) -> mx.array:
     batch_size = logits.shape[0]
-    logit = logits[:, -1] / temperature  # (batch_size, vocab_size)
-    # Calculate probabilities by softmaxing the temparature-scaled logits
+    
+    # Calculate base entropy and varentropy for dynamic adjustments
+    base_entropy, base_varentropy = calculate_varentropy_logsoftmax(logits[:, -1:])
+    
+    # Dynamic temperature scaling based on entropy thresholds
+    if base_entropy > cfg.high_logits_entropy_threshold:
+        adj_temperature = temperature * (1 + cfg.adaptive_temperature_logits_coefficient)
+    elif base_entropy < cfg.low_logits_entropy_threshold:
+        adj_temperature = temperature * (1 - cfg.adaptive_temperature_logits_coefficient)
+    else:
+        adj_temperature = temperature
+        
+    logit = logits[:, -1] / adj_temperature
     probs = mx.softmax(logit, axis=-1)
 
     sorted_indices = mx.argsort(-probs, axis=-1)  # e.g. (bsz x [3, 1280, 1, 0, 2, ...])
@@ -115,22 +127,29 @@ def new_sample(
     cfg: SamplerConfig = SamplerConfig(),
 ) -> Tuple[mx.array, dict[str, mx.array]]:
     metrics = calculate_metrics(logits, attention_scores)
-    ent, vent = metrics["logits_entropy"], metrics["logits_varentropy"]
-    attention_entropy, attention_varentropy = (
-        metrics["attention_entropy"],
-        metrics["attention_varentropy"],
+    
+    # Calculate adaptive sampling parameters based on all metrics
+    adaptive_score = (
+        metrics["logits_entropy"] * cfg.adaptive_score_logits_entropy_coefficient +
+        metrics["attention_entropy"] * cfg.adaptive_score_attention_entropy_coefficient +
+        metrics["logits_varentropy"] * cfg.adaptive_score_logits_varentropy_coefficient +
+        metrics["attention_varentropy"] * cfg.adaptive_score_attention_varentropy_coefficient +
+        metrics["agreement"] * cfg.adaptive_score_agreement_coefficient +
+        metrics["interaction_strength"] * cfg.adaptive_score_interaction_strength_coefficient
     )
-    agreement, interaction_strength = (
-        metrics["agreement"],
-        metrics["interaction_strength"],
-    )
-
-    return adaptive_sample(
+    
+    # Use adaptive score to adjust epsilon
+    dynamic_epsilon = cfg.epsilon * (1 + adaptive_score * 0.1)
+    
+    token = adaptive_sample(
         logits,
         temperature=cfg.temperature,
         key=key,
-        epsilon=cfg.epsilon
-    ), metrics
+        epsilon=dynamic_epsilon,
+        cfg=cfg
+    )
+    
+    return token, metrics
 
 # Old Sampler with top_p and temperature
 
