@@ -64,7 +64,7 @@ def adaptive_sample(
 
     mask = mx.zeros_like(sorted_probs)
 
-    counter = cfg.min_consideration
+    counter = 1
     cumulative_entropy = mx.zeros((batch_size, ))
     cumulative_varentropy = mx.zeros((batch_size, ))
 
@@ -75,8 +75,7 @@ def adaptive_sample(
     cumulative_varentropy[: counter] = current_varentropy
 
     entropy_reduction = current_entropy
-    counter += 1
-    while (entropy_reduction >= epsilon) & (counter < sorted_probs.shape[-1]):
+    while (entropy_reduction >= epsilon) and (counter < sorted_probs.shape[-1]):
         previous_entropy = current_entropy
         previous_varentropy = current_varentropy
 
@@ -100,12 +99,12 @@ def adaptive_sample(
     candidate_probs = candidate_probs / mx.sum(candidate_probs, axis=-1, keepdims=True)
 
     # Sample token
-    sorted_token = mx.random.categorical(mx.log(candidate_probs / (1 - candidate_probs)), key=key)[
+    sorted_token = mx.random.categorical(mx.log(candidate_probs), key=key)[
         ..., None
     ]  # e.g. (bsz * [1390, 3, 2791, 1381, 12476, ...])
     token = mx.take_along_axis(
         sorted_indices, sorted_token, axis=-1
-    )  # e.g. [3,] in shape (batch_size,)
+    )  # e.g. [[3]] in shape (batch_size, 1)
     return token
 
 def new_sample(
