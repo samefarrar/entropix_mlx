@@ -12,7 +12,7 @@ class SamplerConfig(BaseModel):
     min_consideration: float = 30
     top_k: int = 36
     min_probability: float = 0.03  # Turn this down to 0.01 to reduce the shoggoth
-    epsilon: float = 1e-3
+    epsilon: float = 1e-4
 
     min_temperature: float = 0.0
     max_temperature: float = 2.3

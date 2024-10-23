@@ -63,26 +63,19 @@ def adaptive_sample(
     sorted_probs = mx.take_along_axis(probs, sorted_indices, axis=-1)  # e.g. (bsz x [0.9, 0.05, 0.02, 0.01, 0.01, ...])
 
     mask = mx.zeros_like(sorted_probs)
-
-    counter = 1
     cumulative_entropy = mx.zeros((batch_size, ))
     cumulative_varentropy = mx.zeros((batch_size, ))
 
-    current_entropy = -mx.sum(sorted_probs[:, :counter] * mx.log2(mx.clip(sorted_probs[:, :counter], 1e-10, 1.0)))
-    current_varentropy = mx.sum(sorted_probs[:, :counter] * (mx.log2(mx.clip(sorted_probs[:, :counter], 1e-10, 1.0)) + current_entropy[..., None]) ** 2)
+    current_entropy = 0.0
+    current_varentropy = 0.0
 
-    cumulative_entropy[: counter] = current_entropy
-    cumulative_varentropy[: counter] = current_varentropy
-
-    entropy_reduction = current_entropy
-    while (entropy_reduction >= epsilon) and (counter < sorted_probs.shape[-1]):
+    counter = 1
+    while counter < sorted_probs.shape[-1]:
+        current_probs = sorted_probs[:, :counter]
+        # Update entropy and varentropy with current token
         previous_entropy = current_entropy
         previous_varentropy = current_varentropy
 
-        counter += 1
-        current_probs = sorted_probs[:, :counter]
-
-        # Update entropy and varentropy with current token
         current_entropy = -mx.sum(current_probs * mx.log2(mx.clip(current_probs, 1e-10, 1.0)))
         current_varentropy = mx.sum(current_probs * (mx.log2(mx.clip(current_probs, 1e-10, 1.0)) + current_entropy[..., None]) ** 2)
 
@@ -91,11 +84,13 @@ def adaptive_sample(
 
         entropy_reduction = current_entropy - previous_entropy
         varentropy_reduction = current_varentropy - previous_varentropy
-
         mask = mx.concatenate([mx.ones((batch_size, counter)), mx.zeros((batch_size, sorted_probs.shape[-1] - counter))], axis = -1)
 
-    final_mask = mask
-    candidate_probs = sorted_probs * final_mask
+        if entropy_reduction <= epsilon or counter >= sorted_probs.shape[-1] - 1:
+            break
+        counter += 1
+
+    candidate_probs = sorted_probs * mask
     candidate_probs = candidate_probs / mx.sum(candidate_probs, axis=-1, keepdims=True)
 
     # Sample token
