@@ -50,25 +50,13 @@ def calculate_metrics(
 def adaptive_sample(
     logits: mx.array,
     *,
-    temperature: float | mx.array = 0.666,
     key: Union[mx.array, None] = None,
     epsilon: float = 0.01,
     cfg: SamplerConfig
 ) -> mx.array:
     batch_size = logits.shape[0]
-    
-    # Calculate base entropy and varentropy for dynamic adjustments
-    base_entropy, base_varentropy = calculate_varentropy_logsoftmax(logits[:, -1:])
-    
-    # Dynamic temperature scaling based on entropy thresholds
-    if base_entropy > cfg.high_logits_entropy_threshold:
-        adj_temperature = temperature * (1 + cfg.adaptive_temperature_logits_coefficient)
-    elif base_entropy < cfg.low_logits_entropy_threshold:
-        adj_temperature = temperature * (1 - cfg.adaptive_temperature_logits_coefficient)
-    else:
-        adj_temperature = temperature
-        
-    logit = logits[:, -1] / adj_temperature
+
+    logit = logits[:, -1] / cfg.temperature
     probs = mx.softmax(logit, axis=-1)
 
     sorted_indices = mx.argsort(-probs, axis=-1)  # e.g. (bsz x [3, 1280, 1, 0, 2, ...])
@@ -76,7 +64,7 @@ def adaptive_sample(
 
     mask = mx.zeros_like(sorted_probs)
 
-    counter = 20
+    counter = cfg.min_consideration
     cumulative_entropy = mx.zeros((batch_size, ))
     cumulative_varentropy = mx.zeros((batch_size, ))
 
@@ -112,7 +100,7 @@ def adaptive_sample(
     candidate_probs = candidate_probs / mx.sum(candidate_probs, axis=-1, keepdims=True)
 
     # Sample token
-    sorted_token = mx.random.categorical(mx.log(sorted_probs / (1 - sorted_probs)), key=key)[
+    sorted_token = mx.random.categorical(mx.log(candidate_probs / (1 - candidate_probs)), key=key)[
         ..., None
     ]  # e.g. (bsz * [1390, 3, 2791, 1381, 12476, ...])
     token = mx.take_along_axis(
@@ -127,7 +115,7 @@ def new_sample(
     cfg: SamplerConfig = SamplerConfig(),
 ) -> Tuple[mx.array, dict[str, mx.array]]:
     metrics = calculate_metrics(logits, attention_scores)
-    
+
     # Calculate adaptive sampling parameters based on all metrics
     adaptive_score = (
         metrics["logits_entropy"] * cfg.adaptive_score_logits_entropy_coefficient +
@@ -137,18 +125,17 @@ def new_sample(
         metrics["agreement"] * cfg.adaptive_score_agreement_coefficient +
         metrics["interaction_strength"] * cfg.adaptive_score_interaction_strength_coefficient
     )
-    
+
     # Use adaptive score to adjust epsilon
     dynamic_epsilon = cfg.epsilon * (1 + adaptive_score * 0.1)
-    
+
     token = adaptive_sample(
         logits,
-        temperature=cfg.temperature,
         key=key,
         epsilon=dynamic_epsilon,
         cfg=cfg
     )
-    
+
     return token, metrics
 
 # Old Sampler with top_p and temperature
