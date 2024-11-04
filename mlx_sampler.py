@@ -36,6 +36,7 @@ def calculate_metrics(
         mx.abs(attention_probs - mean_attention[:, None, :]), axis=(1, 2)
     )
 
+
     interaction_strength = mx.mean(mx.abs(attention_scores), axis=(1, 2, 3))
     return {
         "logits_entropy": mx.mean(entropy),
@@ -52,11 +53,12 @@ def adaptive_sample(
     *,
     key: Union[mx.array, None] = None,
     epsilon: float = 0.01,
+    temperature: float = 0.666,
     cfg: SamplerConfig
 ) -> mx.array:
     batch_size = logits.shape[0]
 
-    logit = logits[:, -1] / cfg.temperature
+    logit = logits[:, -1] / temperature
     probs = mx.softmax(logit, axis=-1)
 
     sorted_indices = mx.argsort(-probs, axis=-1)  # e.g. (bsz x [3, 1280, 1, 0, 2, ...])
@@ -102,59 +104,111 @@ def adaptive_sample(
     )  # e.g. [[3]] in shape (batch_size, 1)
     return token
 
-def new_sample(
+def sample(
     logits: mx.array,
+    gen_tokens: mx.array,
     attention_scores: mx.array,
     key: Union[mx.array, None] = None,
     cfg: SamplerConfig = SamplerConfig(),
+    clarifying_question_token: int = 2564,
 ) -> Tuple[mx.array, dict[str, mx.array]]:
     metrics = calculate_metrics(logits, attention_scores)
-
-    # Calculate adaptive sampling parameters based on all metrics
-    adaptive_score = (
-        metrics["logits_entropy"] * cfg.adaptive_score_logits_entropy_coefficient +
-        metrics["attention_entropy"] * cfg.adaptive_score_attention_entropy_coefficient +
-        metrics["logits_varentropy"] * cfg.adaptive_score_logits_varentropy_coefficient +
-        metrics["attention_varentropy"] * cfg.adaptive_score_attention_varentropy_coefficient +
-        metrics["agreement"] * cfg.adaptive_score_agreement_coefficient +
-        metrics["interaction_strength"] * cfg.adaptive_score_interaction_strength_coefficient
+    logits_entropy, logits_varentropy, attention_entropy, attention_varentropy, agreement, interaction_strength = (
+        metrics["logits_entropy"], metrics["logits_varentropy"], metrics["attention_entropy"], metrics["attention_varentropy"], metrics["agreement"], metrics["interaction_strength"]
     )
 
-    # Use adaptive score to adjust epsilon
-    dynamic_epsilon = cfg.epsilon * (1 + adaptive_score * 0.1)
-
-    token = adaptive_sample(
-        logits,
-        key=key,
-        epsilon=dynamic_epsilon,
-        cfg=cfg
-    )
-
-    return token, metrics
+    # Low Entropy, Low Varentropy: "flowing with unspoken intent"
+    if (
+        logits_entropy < cfg.low_logits_entropy_threshold and logits_varentropy < cfg.low_logits_varentropy_threshold
+    ):
+        return mx.argmax(logits[:, -1], axis = -1, keepdims = True), metrics
+    # High Entropy, Low Varentropy: "treading carefully, asking clarifying questions"
+    elif (
+        logits_entropy > cfg.high_logits_entropy_threshold and
+        logits_varentropy < cfg.low_logits_varentropy_threshold
+    ):
+        if not mx.any(mx.equal(gen_tokens[:, -1], clarifying_question_token).any()):
+            return mx.array(
+                [[clarifying_question_token]]
+            ), metrics  # Assuming 2564 is our "ask clarifying question" token
+        else:
+            # If we've just asked a question, sample with slightly higher temperature
+            temp_adj = (
+                cfg.high_entropy_attention_offset
+                + cfg.high_entropy_varentropy_attention_coefficient * attention_entropy
+            )  # Increase temperature
+            return _sample(
+                logits,
+                temperature=min(2.0, cfg.temperature * temp_adj),
+                top_p=cfg.top_p,
+                key = key,
+            ), metrics
+    # Low Entropy, High Varentropy: "exploring forks in the path"
+    elif (
+        logits_entropy < cfg.low_logits_entropy_threshold
+        and logits_varentropy > cfg.high_logits_varentropy_threshold
+        and attention_entropy > cfg.low_attention_entropy_threshold
+        and attention_varentropy < cfg.medium_attention_varentropy_threshold
+    ):
+        temp_adj = (
+                    cfg.low_entropy_interaction_strength_offset
+                    + cfg.low_entropy_interaction_strength_coefficient * interaction_strength
+                )
+        return _sample(
+            logits,
+            temperature=min(2.0, cfg.temperature * temp_adj),
+            top_p=cfg.top_p,
+            key = key
+        ), metrics
+    # High Entropy, High Varentropy: "resampling in the mist"
+    elif (
+        logits_entropy > cfg.high_logits_entropy_threshold and
+        logits_varentropy > cfg.high_logits_varentropy_threshold
+        and attention_entropy > cfg.high_attention_entropy_threshold):
+        temp_adj = (
+            cfg.high_entropy_varentropy_attention_offset +
+            cfg.high_entropy_varentropy_attention_coefficient * attention_varentropy
+        )
+        top_p_adj = (
+            cfg.high_entropy_varentropy_attention_offset + cfg.high_entropy_varentropy_attention_coefficient * attention_entropy)
+        return _sample(
+            logits,
+            temperature=min(2.3, cfg.temperature * temp_adj),
+            top_p = mx.clip(top_p_adj, a_min = 0.6, a_max = 1.0),
+            key = key
+        ), metrics
+    else:
+        token = adaptive_sample(
+            logits,
+            key=key,
+            epsilon=cfg.epsilon,
+            cfg=cfg
+        )
+        return token, metrics
 
 # Old Sampler with top_p and temperature
 
-# def sample(
-#     logits: mx.array,
-#     attention_scores: mx.array,
-#     cfg: SamplerConfig = SamplerConfig(),
-#     key: Union[mx.array, None] = None,
-# ) -> Tuple[mx.array, dict[str, mx.array]]:
-#     batch_size = logits.shape[0]
-#     logit = logits[:, -1] / cfg.temperature  # (batch_size, vocab_size)
-#     probs = mx.softmax(logit, axis=-1)
+def _sample(
+    logits: mx.array,
+    temperature,
+    top_p,
+    key: Union[mx.array, None] = None,
+) -> mx.array:
+    batch_size = logits.shape[0]
+    logit = logits[:, -1] / temperature  # (batch_size, vocab_size)
+    probs = mx.softmax(logit, axis=-1)
 
-#     sorted_indices = mx.argsort(-probs, axis=-1)  # e.g. (bsz x [3, 1280, 1, 0, 2, ...])
-#     sorted_probs = mx.take_along_axis(probs, sorted_indices, axis=-1)  # e.g. (bsz x [0.9, 0.05, 0.02, 0.01, 0.01, ...])
-#     cumulative_probs = mx.cumsum(sorted_probs, axis=-1)
-#     mask = cumulative_probs < cfg.top_p
+    sorted_indices = mx.argsort(-probs, axis=-1)  # e.g. (bsz x [3, 1280, 1, 0, 2, ...])
+    sorted_probs = mx.take_along_axis(probs, sorted_indices, axis=-1)  # e.g. (bsz x [0.9, 0.05, 0.02, 0.01, 0.01, ...])
+    cumulative_probs = mx.cumsum(sorted_probs, axis=-1)
+    mask = cumulative_probs < top_p
 
-#     sorted_probs = mx.where(mask, sorted_probs, 0.0)
-#     sorted_probs = sorted_probs / mx.sum(sorted_probs, axis=-1, keepdims=True)
-#     sorted_token = mx.random.categorical(mx.log(sorted_probs / (1 - sorted_probs)), key=key)[
-#         ..., None]
+    sorted_probs = mx.where(mask, sorted_probs, 0.0)
+    sorted_probs = sorted_probs / mx.sum(sorted_probs, axis=-1, keepdims=True)
+    sorted_token = mx.random.categorical(mx.log(sorted_probs), key=key)[
+        ..., None]
 
-#     token = mx.take_along_axis(
-#         sorted_indices, sorted_token, axis=-1
-#     )
-#     return token, calculate_metrics(logits, attention_scores)
+    token = mx.take_along_axis(
+        sorted_indices, sorted_token, axis=-1
+    )
+    return token
