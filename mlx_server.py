@@ -11,7 +11,7 @@ from mlx_model import load_entropix_model
 from mlx_generate import generate_step as generate_step
 from mlx_lm.utils import generate_step as generate_step_mlx_lm
 from mlx_lm.server import APIHandler, stopping_criteria, ModelProvider, sequence_overlap
-from mlx_attention_sampler import SamplerConfig
+from mlx_attention_sampler import SamplerConfig, DEFAULT_SEED
 from typing import List, Union, Literal, Optional, Dict
 
 class EntropixModelProvider(ModelProvider):
@@ -232,9 +232,9 @@ class EntropixAPIHandler(APIHandler):
         self.validate_model_parameters()
 
         if self.seed is not None:
-            self.key = mx.random.key(seed=self.seed)
+            self.key = mx.random.seed(seed=self.seed)
         else:
-            self.key = None
+            self.key = mx.random.seed(seed = DEFAULT_SEED)
 
         # Load the model if needed
         try:

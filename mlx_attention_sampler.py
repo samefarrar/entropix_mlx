@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 
+DEFAULT_SEED = 1337
 
 class SamplerConfig(BaseModel):
     """
@@ -14,7 +15,7 @@ class SamplerConfig(BaseModel):
     min_probability: float = 0.03  # Turn this down to 0.01 to reduce the shoggoth
     epsilon: float = 1e-4
 
-    min_temperature: float = 0.0
+    min_temperature: float = 0.1
     max_temperature: float = 2.3
 
     # Logits entropy thresholds
@@ -37,15 +38,8 @@ class SamplerConfig(BaseModel):
     medium_attention_varentropy_threshold: float = 0.8
     high_attention_varentropy_threshold: float = 1.5
 
-    # Agreement thresholds
-    low_agreement_threshold: float = 2.2e-3
-    medium_agreement_threshold: float = 3e-3
-    high_agreement_threshold: float = 3.8e-3
-
-    # Interaction strength thresholds
-    low_interaction_strength_threshold: float = 6.06
-    medium_interaction_strength_threshold: float = 6.4
-    high_interaction_strength_threshold: float = 7.0
+    target_ce_alpha: float = 1.2
+    target_ce_beta: float = 2.0
 
     # TODO this is a bit of a nasty mess, but also makes all the hyperparameters visible
     high_entropy_attention_offset: float = 1.3
@@ -69,8 +63,6 @@ class SamplerConfig(BaseModel):
     adaptive_top_k_agreement_coefficient: float = 18
     adaptive_min_p_coefficient: float = 0.02
     adaptive_score_logits_entropy_coefficient: float = 0.1
-    adaptive_score_attention_entropy_coefficient: float = 0.2 / 0.29
-    adaptive_score_logits_varentropy_coefficient: float = 0.3
-    adaptive_score_attention_varentropy_coefficient: float = 0.4 * 100
-    adaptive_score_agreement_coefficient: float = 0.5
-    adaptive_score_interaction_strength_coefficient: float = 0.6
+    adaptive_score_attention_entropy_coefficient: float = 0.1
+    adaptive_score_logits_varentropy_coefficient: float = 0.08
+    adaptive_score_attention_varentropy_coefficient: float = 0.07

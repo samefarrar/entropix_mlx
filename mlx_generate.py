@@ -8,7 +8,7 @@ from typing import Union, Optional, Callable, Generator, List, Tuple, Dict
 from mlx_lm.sample_utils import top_p_sampling, min_p_sampling, categorical_sampling
 import time
 from mlx_sampler import sample
-from mlx_attention_sampler import SamplerConfig
+from mlx_attention_sampler import SamplerConfig, DEFAULT_SEED
 import numpy as np
 
 LN_2 = 0.69314718056  # ln(2)
@@ -18,11 +18,11 @@ DEFAULT_MASK_VALUE = -0.7 * mx.array(max_float32, dtype=mx.float16)
 def generate_step(
     prompt: mx.array,
     model: nn.Module,
+    key: mx.array,
     prefill_step_size: int = 4092,
     max_kv_size: Optional[int] = None,
     cache_history: Optional[List[Tuple[mx.array, mx.array]]] = None,
     sampler_config: SamplerConfig = SamplerConfig(),
-    key: Union[mx.array, None] = None,
 ) -> Generator[Tuple[mx.array, Dict[str, float]], None, None]:
     """
     A generator producing token ids based on the given prompt from the model.
@@ -141,10 +141,8 @@ def generate(
     detokenizer.reset()
 
     sampler_config = SamplerConfig()
-    if seed is not None:
-        key = mx.random.seed(seed)
-    else:
-        key = None
+
+    key = mx.random.key(seed or DEFAULT_SEED)
 
     for (token, metrics), n in zip(
         generate_step(prompt_tokens, model, sampler_config = sampler_config, key=key, **kwargs),
